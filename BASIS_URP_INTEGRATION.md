@@ -149,12 +149,13 @@ Added `Runtime/Integration/Basis/` optional adapter folder that:
 - Maps Basis bone role names to `HumanBodyBones`; `Mouth` maps to `Jaw`, unsupported roles such as `CenterEye` are skipped.
 - Does not reference BasisVR or VRCSDK types in adapter source.
 
-Suggested mapping sources from current Basis repository:
+Verified mapping sources from the current Basis repository:
 
-- `Basis.Scripts.Avatar.BasisAvatar`
+- `Basis.Scripts.BasisSdk.BasisAvatar`
 - `Basis.Scripts.TransformBinders.BasisLockToBone`
 - `Basis.Scripts.TransformBinders.BoneControl.BasisBoneTrackedRole`
 - `Basis.Scripts.TransformBinders.BoneControl.BasisFallBackBoneData`
+- `Basis.Scripts.Drivers.BasisAvatarDriver.TryConvertToHumanoidRole`
 
 ## Phase 6 — Tests and validation
 
