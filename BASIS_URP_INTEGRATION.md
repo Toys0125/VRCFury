@@ -14,7 +14,7 @@ This branch is intentionally structured so the Basis/URP work can remain easy to
 
 ## Phase 0 — Branch and fork hygiene
 
-Status: started.
+Status: verified.
 
 - Local branch `BasisURP` starts from `origin/beta`.
 - Upstream remote remains `origin=https://github.com/VRCFury/VRCFury.git`.
@@ -23,7 +23,7 @@ Status: started.
 
 ## Phase 1 — General Armature Link hook for BasisVR
 
-Status: scaffold implemented.
+Status: implemented.
 
 Added files:
 
