@@ -77,8 +77,12 @@ namespace com.vrcfury.api.Integration {
                     continue;
                 }
                 if (requests == null) continue;
-                foreach (var request in requests) {
-                    if (request != null) output.Add(request);
+                try {
+                    foreach (var request in requests) {
+                        if (request != null) output.Add(request);
+                    }
+                } catch (Exception e) {
+                    Debug.LogException(new Exception("VRCFury armature link hook collector failed while enumerating requests: " + collector.Method.DeclaringType + "." + collector.Method.Name, e));
                 }
             }
 
