@@ -345,6 +345,8 @@ namespace VF.Builder.Haptics {
                 }
                 autoCgHeader += cgIncludes + "\n";
                 flattenedProgram = autoCgHeader + flattenedProgram;
+            } else {
+                flattenedProgram = cgIncludes + "\n" + flattenedProgram;
             }
             flattenedProgram = ReadAndFlattenContent(flattenedProgram, includeLibraryFiles: true);
 
@@ -587,12 +589,13 @@ namespace VF.Builder.Haptics {
         private static void WithEachCgInclude(string content, Action<string> withInclude) {
             var lastIncludeEnd = 0;
             while (true) {
-                var nextProgramStart = GetRegex(@"\n\s*(CGINCLUDE)\s*\n").Match(content, lastIncludeEnd);
+                var nextProgramStart = GetRegex(@"\n\s*(CGINCLUDE|HLSLINCLUDE)\s*\n").Match(content, lastIncludeEnd);
                 if (nextProgramStart.Success) {
                     var start = nextProgramStart.Index + nextProgramStart.Length;
-                    var endMatch = GetRegex(@"\n\s*ENDCG\s*\n").Match(content, start);
+                    var endMarker = nextProgramStart.Groups[1].ToString() == "CGINCLUDE" ? "ENDCG" : "ENDHLSL";
+                    var endMatch = GetRegex(@"\n\s*" + endMarker + @"\s*\n").Match(content, start);
                     if (!endMatch.Success) {
-                        throw new Exception("Failed to find CGINCLUDE end marker");
+                        throw new Exception("Failed to find " + nextProgramStart.Groups[1].ToString() + " end marker");
                     }
                     var end = endMatch.Index;
                     var oldProgram = content.Substring(start, end - start);
