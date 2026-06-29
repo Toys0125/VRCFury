@@ -39,9 +39,10 @@ BasisURP-owned files currently include:
 - `BASIS_URP_INTEGRATION.md`
 - `AGENT_UPSTREAM_PORTING.md`
 - `com.vrcfury.vrcfury/Runtime/Integration/FuryArmatureLinkHooks.cs`
+- `com.vrcfury.vrcfury/Runtime/Integration/Basis/`
 - `com.vrcfury.vrcfury/Editor-Avatars/Service/ExternalArmatureLinkHookService.cs`
-- Future files under `com.vrcfury.vrcfury/SPS/URP/`
-- Future files under `com.vrcfury.vrcfury/Editor-Common/Builder/Haptics/URP/`
+- `com.vrcfury.vrcfury/SPS/URP/`
+- URP-aware additions in `com.vrcfury.vrcfury/Editor-Common/Builder/Haptics/SpsMarkersService.cs`, `SpsPatcher.cs`, and `SpsRenderPipelineSupport.cs`
 
 ## Required post-port checks
 
