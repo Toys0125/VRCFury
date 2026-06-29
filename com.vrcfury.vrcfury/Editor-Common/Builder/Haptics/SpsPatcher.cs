@@ -48,8 +48,59 @@ namespace VF.Builder.Haptics {
             return new Regex(pattern, RegexOptions.Compiled);
         }
 
+        private static string GetLightMode(string pass) {
+            var match = GetRegex("\"LightMode\"\\s*=\\s*\"([^\"]+)\"").Match(pass);
+            return match.Success ? match.Groups[1].ToString() : null;
+        }
+
         private static bool IsShadowCasterPass(string pass) {
-            return GetRegex("\"LightMode\"\\s*=\\s*\"ShadowCaster\"").IsMatch(pass);
+            return GetLightMode(pass) == "ShadowCaster";
+        }
+
+        private static bool ShouldSkipPassForSps(string pass, SpsRenderPipelineMode renderPipelineMode) {
+            var lightMode = GetLightMode(pass);
+            if (lightMode == "ShadowCaster") return true;
+            if (renderPipelineMode != SpsRenderPipelineMode.Universal) return false;
+
+            switch (lightMode ?? "SRPDefaultUnlit") {
+                case "UniversalForward":
+                case "UniversalForwardOnly":
+                case "UniversalGBuffer":
+                case "SRPDefaultUnlit":
+                case "LightweightForward":
+                    return false;
+                case "DepthOnly":
+                case "DepthNormals":
+                case "DepthNormalsOnly":
+                case "Meta":
+                case "SceneSelectionPass":
+                case "Picking":
+                case "ScenePickingPass":
+                case "MotionVectors":
+                case "Universal2D":
+                    return true;
+                default:
+                    return true;
+            }
+        }
+
+        private static bool ShouldSkipUsePassForSps(string passName, SpsRenderPipelineMode renderPipelineMode) {
+            if (passName == "ShadowCaster") return true;
+            if (renderPipelineMode != SpsRenderPipelineMode.Universal) return false;
+
+            switch (passName) {
+                case "DepthOnly":
+                case "DepthNormals":
+                case "DepthNormalsOnly":
+                case "Meta":
+                case "SceneSelectionPass":
+                case "Picking":
+                case "ScenePickingPass":
+                case "MotionVectors":
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static void PatchUnsafe(Material mat, bool keepImports) {
@@ -77,6 +128,7 @@ namespace VF.Builder.Haptics {
             }
             
             var pathToSps = GetPathToSps();
+            var renderPipelineMode = SpsRenderPipelineSupport.GetCurrentMode();
             var (contents,isBuiltIn) = ReadFile(shader);
 
             void Replace(string pattern, string replacement, int count) {
@@ -110,6 +162,7 @@ namespace VF.Builder.Haptics {
             
             var md5 = MD5.Create();
             var hashContent = contents + spsMain + HashBuster;
+            if (renderPipelineMode != SpsRenderPipelineMode.BuiltIn) hashContent += renderPipelineMode;
             if (isBuiltIn) hashContent += Application.unityVersion;
             var hashContentBytes = Encoding.UTF8.GetBytes(hashContent);
             var hashBytes = md5.ComputeHash(hashContentBytes);
@@ -152,10 +205,10 @@ namespace VF.Builder.Haptics {
             var passNum = 0;
             contents = WithEachPass(contents,
                 pass => {
-                    if (IsShadowCasterPass(pass)) return null;
+                    if (ShouldSkipPassForSps(pass, renderPipelineMode)) return null;
                     passNum++;
                     try {
-                        var (newPass, num) = PatchPass(pass, spsMain, cgIncludes, false);
+                        var (newPass, num) = PatchPass(pass, spsMain, cgIncludes, false, renderPipelineMode);
                         patchedPrograms += num;
                         return newPass;
                     } catch (Exception e) {
@@ -163,8 +216,11 @@ namespace VF.Builder.Haptics {
                     }
                 },
                 rest => {
+                    if (renderPipelineMode == SpsRenderPipelineMode.Universal && !GetRegex(@"#pragma[ \t]+surface").IsMatch(rest)) {
+                        return rest;
+                    }
                     try {
-                        var (newRest, num) = PatchPass(rest, spsMain, cgIncludes, true);
+                        var (newRest, num) = PatchPass(rest, spsMain, cgIncludes, true, renderPipelineMode);
                         patchedPrograms += num;
                         return newRest;
                     } catch (Exception e) {
@@ -176,7 +232,7 @@ namespace VF.Builder.Haptics {
             contents = GetRegex(@"\n[ \t]*UsePass[ \t]+""([^""]+)/([^""/]+)""").Replace(contents, match => {
                 var shaderName = match.Groups[1].ToString();
                 var passName = match.Groups[2].ToString();
-                if (passName == "ShadowCaster") {
+                if (ShouldSkipUsePassForSps(passName, renderPipelineMode)) {
                     return "\n";
                 }
                 var includedShader = Shader.Find(shaderName);
@@ -225,10 +281,11 @@ namespace VF.Builder.Haptics {
             };
         }
 
-        private static (string,int) PatchPass(string pass, string spsMain, string cgIncludes, bool isSurfaceShader) {
-            if (!isSurfaceShader) {
+        private static (string,int) PatchPass(string pass, string spsMain, string cgIncludes, bool isSurfaceShader, SpsRenderPipelineMode renderPipelineMode) {
+            if (!isSurfaceShader && renderPipelineMode == SpsRenderPipelineMode.BuiltIn) {
                 // If lightmode is unset (the default of "Always"), set it to ForwardBase
-                // so that we actually receive light data
+                // so that we actually receive light data. URP treats missing LightMode as
+                // SRPDefaultUnlit, so do not inject Built-in pass tags there.
                 if (!pass.Contains("\"LightMode\"")) {
                     pass = "\n    Tags { \"LightMode\" = \"ForwardBase\" }\n" + pass;
                 }

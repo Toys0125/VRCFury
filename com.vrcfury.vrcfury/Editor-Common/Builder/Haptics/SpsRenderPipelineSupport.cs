@@ -15,7 +15,7 @@ namespace VF.Builder.Haptics {
     /// </summary>
     internal static class SpsRenderPipelineSupport {
         public static SpsRenderPipelineMode GetCurrentMode() {
-            var asset = GraphicsSettings.renderPipelineAsset;
+            var asset = GetCurrentPipelineAsset();
             if (asset == null) return SpsRenderPipelineMode.BuiltIn;
 
             var type = asset.GetType();
@@ -29,9 +29,15 @@ namespace VF.Builder.Haptics {
         }
 
         public static string GetCurrentPipelineName() {
-            var asset = GraphicsSettings.renderPipelineAsset;
+            var asset = GetCurrentPipelineAsset();
             if (asset == null) return "Built-in Render Pipeline";
             return asset.GetType().FullName ?? asset.GetType().Name;
+        }
+
+        private static RenderPipelineAsset GetCurrentPipelineAsset() {
+            return QualitySettings.renderPipeline != null
+                ? QualitySettings.renderPipeline
+                : GraphicsSettings.renderPipelineAsset;
         }
 
         public static bool IsUrp() {

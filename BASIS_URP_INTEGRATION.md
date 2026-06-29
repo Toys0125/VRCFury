@@ -67,7 +67,7 @@ public static class BasisVrcfuryArmatureLinkAdapter {
 
 ## Phase 2 — URP SPSv2 render transport
 
-Status: design-ready, not yet implemented.
+Status: implemented.
 
 Current SPSv2 uses Built-in `GrabPass` to move marker/resolver data through framebuffer textures:
 
@@ -84,26 +84,28 @@ Target design:
 4. Publish `_VFGrid56`, `_VFGrid56_TexelSize`, `_VFGridFinal`, and `_VFGridFinal_TexelSize` globally before patched SPS deform shaders run.
 5. Preserve stereo behavior by supporting `Texture2DArray` for single-pass instanced/multiview where required.
 
-Implementation options:
+Implementation notes:
 
-- Preferred: a URP renderer feature / render pass in a small optional adapter package.
-- Alternative: an SRP `RenderPipelineManager` hook with reflection-only URP detection, but this is more brittle.
+- Built-in remains on the existing `GrabPass` path.
+- URP uses `SPS/URP/Runtime/VrcfurySpsUrpRendererFeature.cs`, an optional `ScriptableRendererFeature` in the `VRCFury-SPS-URP` assembly. The assembly is guarded by `com.unity.render-pipelines.universal` so projects without URP keep compiling.
+- Add `VRCFury.SPS.URP.VrcfurySpsUrpRendererFeature` to every URP renderer data asset used by an SPS scene/avatar.
+- `SpsMarkersService` selects URP marker materials and omits the Built-in data-grab material when the active render pipeline is URP.
 
-Do not remove the Built-in path. The branch should support both:
+Do not remove the Built-in path. The branch supports both:
 
 - Built-in: current `GrabPass` path.
 - URP: explicit render pass / render texture path.
 
 ## Phase 3 — URP-compatible SPS shaders
 
-Status: pending.
+Status: implemented for desktop geometry-shader URP.
 
-Required work:
+Implemented work:
 
-- Add URP-compatible marker and resolver shader variants that do not use `GrabPass`.
-- Add `RenderPipeline` tags for URP subshaders where needed.
-- Keep exact integer texture reads from `sps_texture.cginc`.
-- Preserve existing geometry shader path for desktop first.
+- Added `SPS/URP/sps_socket_urp.shader` and `SPS/URP/sps_resolver_urp.shader` with no `GrabPass`.
+- Added `RenderPipeline` tags and custom URP `LightMode` tags consumed by the renderer feature.
+- Kept exact integer texture reads from `sps_texture.cginc`.
+- Preserved the existing geometry shader path for desktop first.
 - Later: investigate non-geometry fallback for Quest/mobile.
 
 Acceptance criteria:
@@ -115,7 +117,7 @@ Acceptance criteria:
 
 ## Phase 4 — URP-aware shader patcher
 
-Status: pending.
+Status: implemented initial URP-aware pass filtering.
 
 `SpsPatcher` currently assumes Built-in-style shader conventions in several places, especially pass tags. URP support needs a patcher mode that understands:
 
@@ -123,22 +125,29 @@ Status: pending.
 - Shader Graph generated shader source where available.
 - Custom hand-written HLSL URP shaders.
 
+Implementation notes:
+
+- Existing Built-in shader patching keeps the Built-in `ForwardBase` injection behavior.
+- URP mode allows visible deformation passes (`UniversalForward`, `UniversalForwardOnly`, `UniversalGBuffer`, `SRPDefaultUnlit`, `LightweightForward`) and explicitly skips shadow/depth/depth-normal/meta/selection/picking/motion-vector passes.
+- URP mode avoids Built-in `ForwardBase` injection and avoids treating non-surface `HLSLINCLUDE`/`CGINCLUDE` blocks as Built-in surface shaders.
+
 Acceptance criteria:
 
 - Existing Built-in shader patching remains unchanged.
 - URP shaders are patched only for render passes where vertex deformation is safe.
-- Shadow/depth/meta handling is explicit and covered by tests.
+- Shadow/depth/meta handling is explicit in code; Unity project validation is still required for final scene coverage.
 
 ## Phase 5 — BasisVR integration package
 
-Status: pending.
+Status: implemented reflection-only optional adapter.
 
-Add a Basis-side adapter package or optional folder that:
+Added `Runtime/Integration/Basis/` optional adapter folder that:
 
-- Detects Basis avatar roots and Basis armature-link authoring components.
+- Detects Basis avatar roots by reflection (`Basis.Scripts.BasisSdk.BasisAvatar`).
+- Detects `Basis.Scripts.TransformBinders.BasisLockToBone` by reflection as an initial armature-link authoring hint.
 - Registers a `FuryArmatureLinkHooks.CollectArmatureLinks` collector.
-- Maps Basis bone roles to `HumanBodyBones` or explicit target objects.
-- Does not require VRCSDK types.
+- Maps Basis bone role names to `HumanBodyBones`; `Mouth` maps to `Jaw`, unsupported roles such as `CenterEye` are skipped.
+- Does not reference BasisVR or VRCSDK types in adapter source.
 
 Suggested mapping sources from current Basis repository:
 
@@ -148,6 +157,8 @@ Suggested mapping sources from current Basis repository:
 - `Basis.Scripts.TransformBinders.BoneControl.BasisFallBackBoneData`
 
 ## Phase 6 — Tests and validation
+
+Status: static/editor test coverage added; full Unity scene matrix still needs to be run in Unity installations.
 
 Required test projects:
 
@@ -162,6 +173,11 @@ Suggested automated checks:
 - Compile with URP installed.
 - Build SPS test avatar/scene and compare generated materials/shaders.
 - Verify generated `_VFGrid*` textures are present and have expected texel size properties.
+
+Implemented automated/static checks in this branch:
+
+- `Tests/SpsPatcherUrpTests.cs` covers URP pass filtering for visible, shadow, depth, meta, selection, motion-vector, and unknown passes while asserting Built-in filtering behavior remains legacy-compatible.
+- Local non-Unity checks validate asmdef JSON, unique Unity meta GUIDs, absence of direct URP references in core asmdefs, and absence of direct Basis/VRCSDK type references in the Basis adapter source.
 
 ## Later TODO — toggle conversion to Vixxy
 

@@ -67,9 +67,11 @@ namespace VF.Service {
             }
 
             var componentRoot = request.componentRoot != null ? request.componentRoot.asVf() : request.linkFrom.asVf();
-            var previousCurrentPath = globals.currentFeatureObjectPath;
-            globals.addOtherFeature(model);
-            globals.currentFeatureObjectPath = previousCurrentPath;
+            if (globals.addOtherFeatureAt != null) {
+                globals.addOtherFeatureAt(model, componentRoot);
+            } else {
+                globals.addOtherFeature(model);
+            }
 
             Debug.Log("Added external VRCFury Armature Link from " + request.source + " on " + componentRoot.GetPath(avatarObject, true));
         }

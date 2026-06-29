@@ -12,6 +12,7 @@ namespace VF.Service {
     internal class GlobalsService {
         public VFGameObject avatarObject;
         public Action<FeatureModel> addOtherFeature;
+        public Action<FeatureModel, VFGameObject> addOtherFeatureAt;
         public List<FeatureModel> allFeaturesInRun;
         public List<FeatureBuilder> allBuildersInRun;
         public int currentFeatureNum = 0;

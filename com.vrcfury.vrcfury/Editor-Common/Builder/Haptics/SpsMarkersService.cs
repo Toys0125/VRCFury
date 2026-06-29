@@ -10,6 +10,8 @@ namespace VF.Builder.Haptics {
         public const string SocketMarkerShaderName = "Hidden/VRCFury/SpsSocketMarker";
         public const string ResolverShaderName = "Hidden/VRCFury/SpsResolver";
         public const string DataGrabPassShaderName = "Hidden/VRCFury/SpsDataGrabPass";
+        public const string UrpSocketMarkerShaderName = "Hidden/VRCFury/URP/SpsSocketMarker";
+        public const string UrpResolverShaderName = "Hidden/VRCFury/URP/SpsResolver";
         public const string Configured = "_SPS_Configured";
         public const string Id = "_SPS_Id";
         public const string PlayerId = "_SPS_PlayerId";
@@ -23,12 +25,16 @@ namespace VF.Builder.Haptics {
         private readonly Lazy<Material> sharedSocketMaterial;
         private readonly Lazy<Material> sharedResolverMaterial;
         private readonly Lazy<Material> sharedGrabPassMaterial;
+        private readonly Lazy<Material> sharedUrpSocketMaterial;
+        private readonly Lazy<Material> sharedUrpResolverMaterial;
 
         public SpsMarkersService() {
             sharedTriggerMesh = new Lazy<Mesh>(CreateTriggerMesh);
             sharedSocketMaterial = new Lazy<Material>(() => CreateSharedMaterial(SocketMarkerShaderName));
             sharedResolverMaterial = new Lazy<Material>(() => CreateSharedMaterial(ResolverShaderName));
             sharedGrabPassMaterial = new Lazy<Material>(() => CreateSharedMaterial(DataGrabPassShaderName));
+            sharedUrpSocketMaterial = new Lazy<Material>(() => CreateSharedMaterial(UrpSocketMarkerShaderName));
+            sharedUrpResolverMaterial = new Lazy<Material>(() => CreateSharedMaterial(UrpResolverShaderName));
         }
 
         public float NewMarkerId() {
@@ -51,11 +57,11 @@ namespace VF.Builder.Haptics {
         }
 
         public Material GetSharedSocketMaterial() {
-            return sharedSocketMaterial.Value;
+            return SpsRenderPipelineSupport.IsUrp() ? sharedUrpSocketMaterial.Value : sharedSocketMaterial.Value;
         }
 
         public Material GetSharedResolverMaterial() {
-            return sharedResolverMaterial.Value;
+            return SpsRenderPipelineSupport.IsUrp() ? sharedUrpResolverMaterial.Value : sharedResolverMaterial.Value;
         }
 
         public Material GetSharedGrabPassMaterial() {
@@ -81,7 +87,11 @@ namespace VF.Builder.Haptics {
             if (meshFilter != null) {
                 meshFilter.sharedMesh = GetTriggerMesh();
             }
-            renderer.sharedMaterials = new[] { markerMaterial, GetSharedGrabPassMaterial() };
+            if (SpsRenderPipelineSupport.IsUrp()) {
+                renderer.sharedMaterials = new[] { markerMaterial };
+            } else {
+                renderer.sharedMaterials = new[] { markerMaterial, GetSharedGrabPassMaterial() };
+            }
         }
 
         private Mesh CreateTriggerMesh() {

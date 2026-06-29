@@ -1,0 +1,25 @@
+{
+  "name": "VRCFury-SPS-URP",
+  "rootNamespace": "VRCFury.SPS.URP",
+  "references": [
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "VRCF_URP"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.unity.render-pipelines.universal",
+      "expression": "",
+      "define": "VRCF_URP"
+    }
+  ],
+  "noEngineReferences": false
+}

@@ -107,6 +107,7 @@ namespace VF.Builder {
 
             var globals = injector.GetService<GlobalsService>();
             globals.addOtherFeature = (feature) => AddComponent(feature, currentServiceGameObject, currentServiceNumber);
+            globals.addOtherFeatureAt = (feature, configObject) => AddComponent(feature, configObject ?? currentServiceGameObject, currentServiceNumber);
             globals.allFeaturesInRun = collectedModels;
             globals.allBuildersInRun = collectedBuilders;
             
