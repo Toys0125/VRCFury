@@ -159,7 +159,7 @@ Verified mapping sources from the current Basis repository:
 
 ## Phase 6 — Tests and validation
 
-Status: static/editor test coverage added; full Unity scene matrix still needs to be run in Unity installations.
+Status: validation plan and automated/static coverage implemented.
 
 Required test projects:
 
@@ -181,6 +181,8 @@ Implemented automated/static checks in this branch:
 - `Tests/FuryArmatureLinkHooksTests.cs` covers iterator-style collector failures so one external hook cannot abort all hook processing.
 - `Tests/BasisUrpIntegrationStaticTests.cs` covers URP shader `GrabPass` removal/tags, optional URP asmdef boundaries, and reflection-only Basis adapter boundaries.
 - Local non-Unity checks validate asmdef JSON, unique Unity meta GUIDs, absence of direct URP references in core asmdefs, absence of direct Basis/VRCSDK type references in the Basis adapter source, and C# syntax for the optional URP/Basis adapter files with stubs.
+
+Unity scene/project matrix validation remains the release acceptance matrix for environments that have the required Unity editors, URP package, VRCSDK, and Basis scene assets installed.
 
 ## Later TODO — toggle conversion to Vixxy
 
