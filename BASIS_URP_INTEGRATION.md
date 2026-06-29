@@ -178,7 +178,9 @@ Suggested automated checks:
 Implemented automated/static checks in this branch:
 
 - `Tests/SpsPatcherUrpTests.cs` covers URP pass filtering for visible, shadow, depth, meta, selection, motion-vector, and unknown passes while asserting Built-in filtering behavior remains legacy-compatible.
-- Local non-Unity checks validate asmdef JSON, unique Unity meta GUIDs, absence of direct URP references in core asmdefs, and absence of direct Basis/VRCSDK type references in the Basis adapter source.
+- `Tests/FuryArmatureLinkHooksTests.cs` covers iterator-style collector failures so one external hook cannot abort all hook processing.
+- `Tests/BasisUrpIntegrationStaticTests.cs` covers URP shader `GrabPass` removal/tags, optional URP asmdef boundaries, and reflection-only Basis adapter boundaries.
+- Local non-Unity checks validate asmdef JSON, unique Unity meta GUIDs, absence of direct URP references in core asmdefs, absence of direct Basis/VRCSDK type references in the Basis adapter source, and C# syntax for the optional URP/Basis adapter files with stubs.
 
 ## Later TODO — toggle conversion to Vixxy
 
