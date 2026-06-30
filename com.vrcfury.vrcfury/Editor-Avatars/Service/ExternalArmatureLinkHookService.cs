@@ -73,7 +73,7 @@ namespace VF.Service {
                 globals.addOtherFeature(model);
             }
 
-            Debug.Log("Added external VRCFury Armature Link from " + request.source + " on " + componentRoot.GetPath(avatarObject, true));
+            Debug.Log("Added VRCFury Armature Link request from " + request.source + " on " + componentRoot.GetPath(avatarObject, true));
         }
     }
 }

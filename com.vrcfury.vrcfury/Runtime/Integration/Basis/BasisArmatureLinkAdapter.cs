@@ -8,9 +8,9 @@ using UnityEngine;
 namespace com.vrcfury.integration.basis {
     /// <summary>
     /// Reflection-only BasisVR adapter for the general VRCFury armature-link hook.
-    /// This assembly intentionally does not reference Basis or VRCSDK types. When a
-    /// Basis avatar is present, BasisLockToBone components are treated as authored
-    /// requests to link that object to the matching humanoid bone.
+    /// This assembly intentionally does not reference Basis or VRCSDK types. Objects
+    /// must opt in with <see cref="BasisVrcfuryArmatureLink"/>; BasisLockToBone is
+    /// only used as a role data source on explicitly marked objects.
     /// </summary>
     [InitializeOnLoad]
     internal static class BasisArmatureLinkAdapter {
@@ -23,44 +23,71 @@ namespace com.vrcfury.integration.basis {
         }
 
         private static IEnumerable<FuryArmatureLinkHooks.Request> Collect(GameObject avatarRoot) {
-            if (avatarRoot == null || !HasBasisAvatar(avatarRoot)) yield break;
+            if (avatarRoot == null) yield break;
+
+            var childComponents = avatarRoot.GetComponentsInChildren<Component>(true);
+            if (!HasBasisAvatar(avatarRoot, childComponents)) yield break;
 
             var seen = new HashSet<GameObject>();
-            foreach (var component in avatarRoot.GetComponentsInChildren<Component>(true)) {
-                if (component == null) continue;
-                if ((component.GetType().FullName ?? "") != BasisLockToBoneTypeName) continue;
-                if (!seen.Add(component.gameObject)) continue;
-                string roleName;
-                if (!TryGetRoleName(component, out roleName)) continue;
-                HumanBodyBones bone;
-                if (!TryMapRole(roleName, out bone)) continue;
+            foreach (var component in childComponents) {
+                var marker = component as BasisVrcfuryArmatureLink;
+                if (marker == null) continue;
+                if (!seen.Add(marker.gameObject)) continue;
 
-                yield return new FuryArmatureLinkHooks.Request {
-                    source = "BasisVR BasisLockToBone",
-                    componentRoot = component.gameObject,
-                    linkFrom = component.gameObject,
-                    linkTo = new List<FuryArmatureLinkHooks.Target> {
-                        new FuryArmatureLinkHooks.Target {
-                            useBone = true,
-                            bone = bone,
-                            useObject = false,
-                            offset = ""
-                        }
-                    },
-                    recursive = false,
-                    alignPosition = true,
-                    alignRotation = true,
-                    alignScale = false,
-                    removeParentConstraints = true
-                };
+                yield return CreateRequest(marker);
             }
         }
 
-        private static bool HasBasisAvatar(GameObject avatarRoot) {
+        private static FuryArmatureLinkHooks.Request CreateRequest(BasisVrcfuryArmatureLink marker) {
+            return new FuryArmatureLinkHooks.Request {
+                source = "BasisVR VRCFury Armature Link",
+                componentRoot = marker.gameObject,
+                linkFrom = marker.gameObject,
+                linkTo = CreateTargets(marker),
+                recursive = marker.recursive,
+                alignPosition = marker.alignPosition,
+                alignRotation = marker.alignRotation,
+                alignScale = marker.alignScale,
+                removeParentConstraints = marker.removeParentConstraints
+            };
+        }
+
+        private static List<FuryArmatureLinkHooks.Target> CreateTargets(BasisVrcfuryArmatureLink marker) {
+            if (marker.explicitTarget != null) {
+                return new List<FuryArmatureLinkHooks.Target> {
+                    new FuryArmatureLinkHooks.Target {
+                        useBone = false,
+                        useObject = true,
+                        obj = marker.explicitTarget,
+                        offset = ""
+                    }
+                };
+            }
+
+            var bone = marker.fallbackBone;
+            string roleName;
+            if (marker.useBasisLockToBoneRole && TryGetBasisLockToBoneRoleName(marker.gameObject, out roleName)) {
+                if (!TryMapRole(roleName, out bone)) {
+                    Debug.LogWarning("Basis VRCFury Armature Link on " + marker.gameObject.name + " has unsupported BasisLockToBone role '" + roleName + "'. Falling back to " + marker.fallbackBone + ".");
+                    bone = marker.fallbackBone;
+                }
+            }
+
+            return new List<FuryArmatureLinkHooks.Target> {
+                new FuryArmatureLinkHooks.Target {
+                    useBone = true,
+                    bone = bone,
+                    useObject = false,
+                    offset = ""
+                }
+            };
+        }
+
+        private static bool HasBasisAvatar(GameObject avatarRoot, IEnumerable<Component> childComponents) {
             foreach (var component in avatarRoot.GetComponentsInParent<Component>(true)) {
                 if (IsBasisAvatar(component)) return true;
             }
-            foreach (var component in avatarRoot.GetComponentsInChildren<Component>(true)) {
+            foreach (var component in childComponents) {
                 if (IsBasisAvatar(component)) return true;
             }
             return false;
@@ -68,6 +95,16 @@ namespace com.vrcfury.integration.basis {
 
         private static bool IsBasisAvatar(Component component) {
             return component != null && (component.GetType().FullName ?? "") == BasisAvatarTypeName;
+        }
+
+        private static bool TryGetBasisLockToBoneRoleName(GameObject obj, out string roleName) {
+            roleName = null;
+            foreach (var component in obj.GetComponents<Component>()) {
+                if (component == null) continue;
+                if ((component.GetType().FullName ?? "") != BasisLockToBoneTypeName) continue;
+                return TryGetRoleName(component, out roleName);
+            }
+            return false;
         }
 
         private static bool TryGetRoleName(Component component, out string roleName) {

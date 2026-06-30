@@ -4,9 +4,9 @@ using UnityEngine;
 
 namespace com.vrcfury.api.Integration {
     /// <summary>
-    /// Integration point for non-VRChat avatar runtimes that want VRCFury's existing
-    /// Armature Link builder to run without depending on VRCAvatarDescriptor-specific
-    /// authoring UI.
+    /// Integration point for external avatar authoring systems that want VRCFury's
+    /// existing Armature Link builder to run during the VRCFury avatar build without
+    /// depending on VRCAvatarDescriptor-specific authoring UI.
     ///
     /// BasisVR should register a collector during editor initialization and return one
     /// request per object/armature that should be linked into the avatar skeleton.
@@ -64,25 +64,39 @@ namespace com.vrcfury.api.Integration {
         }
 
         public static IList<Request> InvokeCollectors(GameObject avatarRoot) {
+            IList<Exception> failures;
+            return InvokeCollectors(avatarRoot, out failures);
+        }
+
+        public static IList<Request> InvokeCollectors(GameObject avatarRoot, out IList<Exception> failures) {
             var output = new List<Request>();
+            var failureList = new List<Exception>();
+            failures = failureList;
             var collectors = CollectArmatureLinks;
             if (collectors == null) return output;
 
             foreach (CollectArmatureLinksDelegate collector in collectors.GetInvocationList()) {
+                var collectorName = collector.Method.DeclaringType + "." + collector.Method.Name;
                 IEnumerable<Request> requests;
                 try {
                     requests = collector(avatarRoot);
                 } catch (Exception e) {
-                    Debug.LogException(new Exception("VRCFury armature link hook collector failed: " + collector.Method.DeclaringType + "." + collector.Method.Name, e));
+                    var wrapped = new Exception("VRCFury armature link hook collector failed: " + collectorName, e);
+                    failureList.Add(wrapped);
+                    Debug.LogException(wrapped);
                     continue;
                 }
                 if (requests == null) continue;
+                var acceptedBeforeEnumeration = output.Count;
                 try {
                     foreach (var request in requests) {
                         if (request != null) output.Add(request);
                     }
                 } catch (Exception e) {
-                    Debug.LogException(new Exception("VRCFury armature link hook collector failed while enumerating requests: " + collector.Method.DeclaringType + "." + collector.Method.Name, e));
+                    var acceptedCount = output.Count - acceptedBeforeEnumeration;
+                    var wrapped = new Exception("VRCFury armature link hook collector failed while enumerating requests after accepting " + acceptedCount + " request(s): " + collectorName, e);
+                    failureList.Add(wrapped);
+                    Debug.LogException(wrapped);
                 }
             }
 

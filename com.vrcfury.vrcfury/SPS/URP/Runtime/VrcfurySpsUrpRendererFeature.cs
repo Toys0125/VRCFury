@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
@@ -27,6 +28,8 @@ namespace VRCFury.SPS.URP {
         }
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData) {
+            // Unity can invoke AddRenderPasses after domain reload/deserialization before
+            // our Create callback has rebuilt the pass instance.
             if (pass == null) Create();
             pass.UpdateSettings(settings);
             renderer.EnqueuePass(pass);
@@ -68,6 +71,8 @@ namespace VRCFury.SPS.URP {
                     cmd.GetTemporaryRT(Grid56, descriptor, FilterMode.Point);
                     cmd.GetTemporaryRT(GridFinal, descriptor, FilterMode.Point);
 
+                    // An all-zero grid is the valid "no sockets/resolvers visible" state.
+                    // Deform shaders treat the missing SPS cell magic as no resolved path.
                     CoreUtils.SetRenderTarget(cmd, Grid56Target, ClearFlag.Color, Color.clear);
                     context.ExecuteCommandBuffer(cmd);
                     cmd.Clear();
@@ -99,7 +104,7 @@ namespace VRCFury.SPS.URP {
                 descriptor.msaaSamples = 1;
                 descriptor.useMipMap = false;
                 descriptor.autoGenerateMips = false;
-                descriptor.colorFormat = RenderTextureFormat.ARGB32;
+                descriptor.graphicsFormat = GraphicsFormat.R8G8B8A8_UNorm;
                 if (descriptor.dimension != TextureDimension.Tex2DArray) {
                     descriptor.dimension = TextureDimension.Tex2D;
                     descriptor.volumeDepth = 1;

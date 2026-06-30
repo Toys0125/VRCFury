@@ -53,54 +53,81 @@ namespace VF.Builder.Haptics {
             return match.Success ? match.Groups[1].ToString() : null;
         }
 
-        private static bool IsShadowCasterPass(string pass) {
-            return GetLightMode(pass) == "ShadowCaster";
+        private enum SpsPassAction {
+            Patch,
+            Preserve,
+            Remove
         }
 
-        private static bool ShouldSkipPassForSps(string pass, SpsRenderPipelineMode renderPipelineMode) {
+        private static SpsPassAction GetPassActionForSps(string pass, SpsRenderPipelineMode renderPipelineMode) {
             var lightMode = GetLightMode(pass);
-            if (lightMode == "ShadowCaster") return true;
-            if (renderPipelineMode != SpsRenderPipelineMode.Universal) return false;
-
-            switch (lightMode ?? "SRPDefaultUnlit") {
-                case "UniversalForward":
-                case "UniversalForwardOnly":
-                case "UniversalGBuffer":
-                case "SRPDefaultUnlit":
-                case "LightweightForward":
-                    return false;
-                case "DepthOnly":
-                case "DepthNormals":
-                case "DepthNormalsOnly":
-                case "Meta":
-                case "SceneSelectionPass":
-                case "Picking":
-                case "ScenePickingPass":
-                case "MotionVectors":
-                case "Universal2D":
-                    return true;
-                default:
-                    return true;
+            if (renderPipelineMode == SpsRenderPipelineMode.Universal) {
+                switch (lightMode ?? "SRPDefaultUnlit") {
+                    case "UniversalForward":
+                    case "UniversalForwardOnly":
+                    case "UniversalGBuffer":
+                    case "SRPDefaultUnlit":
+                    case "LightweightForward":
+                        return SpsPassAction.Patch;
+                    case "ShadowCaster":
+                    case "DepthOnly":
+                    case "DepthNormals":
+                    case "DepthNormalsOnly":
+                    case "Meta":
+                    case "SceneSelectionPass":
+                    case "Picking":
+                    case "ScenePickingPass":
+                    case "MotionVectors":
+                    case "Universal2D":
+                    default:
+                        return SpsPassAction.Preserve;
+                }
             }
+
+            return lightMode == "ShadowCaster" ? SpsPassAction.Remove : SpsPassAction.Patch;
         }
 
-        private static bool ShouldSkipUsePassForSps(string passName, SpsRenderPipelineMode renderPipelineMode) {
-            if (passName == "ShadowCaster") return true;
-            if (renderPipelineMode != SpsRenderPipelineMode.Universal) return false;
-
-            switch (passName) {
-                case "DepthOnly":
-                case "DepthNormals":
-                case "DepthNormalsOnly":
-                case "Meta":
-                case "SceneSelectionPass":
-                case "Picking":
-                case "ScenePickingPass":
-                case "MotionVectors":
-                    return true;
-                default:
-                    return false;
+        private static SpsPassAction GetUsePassActionForSps(string passName, SpsRenderPipelineMode renderPipelineMode) {
+            if (renderPipelineMode == SpsRenderPipelineMode.Universal) {
+                switch (passName) {
+                    case "UniversalForward":
+                    case "UniversalForwardOnly":
+                    case "UniversalGBuffer":
+                    case "SRPDefaultUnlit":
+                    case "LightweightForward":
+                        return SpsPassAction.Patch;
+                    case "ShadowCaster":
+                    case "DepthOnly":
+                    case "DepthNormals":
+                    case "DepthNormalsOnly":
+                    case "Meta":
+                    case "SceneSelectionPass":
+                    case "Picking":
+                    case "ScenePickingPass":
+                    case "MotionVectors":
+                    case "Universal2D":
+                    default:
+                        return SpsPassAction.Preserve;
+                }
             }
+
+            return passName == "ShadowCaster" ? SpsPassAction.Remove : SpsPassAction.Patch;
+        }
+
+        internal static bool ShouldPatchPassForSps(string pass, SpsRenderPipelineMode renderPipelineMode) {
+            return GetPassActionForSps(pass, renderPipelineMode) == SpsPassAction.Patch;
+        }
+
+        internal static bool ShouldRemovePassForSps(string pass, SpsRenderPipelineMode renderPipelineMode) {
+            return GetPassActionForSps(pass, renderPipelineMode) == SpsPassAction.Remove;
+        }
+
+        internal static bool ShouldPatchUsePassForSps(string passName, SpsRenderPipelineMode renderPipelineMode) {
+            return GetUsePassActionForSps(passName, renderPipelineMode) == SpsPassAction.Patch;
+        }
+
+        internal static bool ShouldRemoveUsePassForSps(string passName, SpsRenderPipelineMode renderPipelineMode) {
+            return GetUsePassActionForSps(passName, renderPipelineMode) == SpsPassAction.Remove;
         }
 
         private static void PatchUnsafe(Material mat, bool keepImports) {
@@ -205,7 +232,8 @@ namespace VF.Builder.Haptics {
             var passNum = 0;
             contents = WithEachPass(contents,
                 pass => {
-                    if (ShouldSkipPassForSps(pass, renderPipelineMode)) return null;
+                    if (ShouldRemovePassForSps(pass, renderPipelineMode)) return null;
+                    if (!ShouldPatchPassForSps(pass, renderPipelineMode)) return pass;
                     passNum++;
                     try {
                         var (newPass, num) = PatchPass(pass, spsMain, cgIncludes, false, renderPipelineMode);
@@ -232,8 +260,11 @@ namespace VF.Builder.Haptics {
             contents = GetRegex(@"\n[ \t]*UsePass[ \t]+""([^""]+)/([^""/]+)""").Replace(contents, match => {
                 var shaderName = match.Groups[1].ToString();
                 var passName = match.Groups[2].ToString();
-                if (ShouldSkipUsePassForSps(passName, renderPipelineMode)) {
+                if (ShouldRemoveUsePassForSps(passName, renderPipelineMode)) {
                     return "\n";
+                }
+                if (!ShouldPatchUsePassForSps(passName, renderPipelineMode)) {
+                    return match.Groups[0].ToString();
                 }
                 var includedShader = Shader.Find(shaderName);
                 if (!includedShader) {
@@ -264,6 +295,10 @@ namespace VF.Builder.Haptics {
             });
 
             var newShader = Shader.Find(newShaderName);
+            if (!newShader) {
+                AssetDatabase.ImportAsset(newPath, ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+                newShader = Shader.Find(newShaderName);
+            }
             if (!newShader) {
                 throw new VRCFBuilderException("Patch succeeded, but shader failed to generate. Check the unity log for compile error?\n\n" + newPath);
             }

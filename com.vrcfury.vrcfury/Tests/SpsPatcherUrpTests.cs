@@ -1,55 +1,68 @@
-using System;
-using System.Reflection;
 using NUnit.Framework;
+using VF.Builder.Haptics;
 
 [Category("VRCFury")]
 public class SpsPatcherUrpTests {
-    private static readonly Type PatcherType = Type.GetType("VF.Builder.Haptics.SpsPatcher, VRCFury-Editor-Common", true);
-    private static readonly Type ModeType = Type.GetType("VF.Builder.Haptics.SpsRenderPipelineMode, VRCFury-Editor-Common", true);
-    private static readonly MethodInfo ShouldSkipPass = PatcherType.GetMethod("ShouldSkipPassForSps", BindingFlags.NonPublic | BindingFlags.Static);
-    private static readonly MethodInfo ShouldSkipUsePass = PatcherType.GetMethod("ShouldSkipUsePassForSps", BindingFlags.NonPublic | BindingFlags.Static);
+    [Test]
+    public void UrpPassFilteringPatchesOnlyVisibleDeformationPasses() {
+        var urp = SpsRenderPipelineMode.Universal;
+
+        Assert.That(ShouldPatch("UniversalForward", urp), Is.True);
+        Assert.That(ShouldPatch("UniversalForwardOnly", urp), Is.True);
+        Assert.That(ShouldPatch("UniversalGBuffer", urp), Is.True);
+        Assert.That(ShouldPatch("SRPDefaultUnlit", urp), Is.True);
+        Assert.That(ShouldPatch(null, urp), Is.True);
+
+        Assert.That(ShouldPatch("ShadowCaster", urp), Is.False);
+        Assert.That(ShouldPatch("DepthOnly", urp), Is.False);
+        Assert.That(ShouldPatch("DepthNormals", urp), Is.False);
+        Assert.That(ShouldPatch("Meta", urp), Is.False);
+        Assert.That(ShouldPatch("SceneSelectionPass", urp), Is.False);
+        Assert.That(ShouldPatch("MotionVectors", urp), Is.False);
+        Assert.That(ShouldPatch("CustomUnsafePass", urp), Is.False);
+    }
 
     [Test]
-    public void UrpPassFilteringAllowsOnlyVisibleDeformationPasses() {
-        var urp = Enum.Parse(ModeType, "Universal");
+    public void UrpPassFilteringPreservesUtilityPasses() {
+        var urp = SpsRenderPipelineMode.Universal;
 
-        Assert.That(ShouldSkip("UniversalForward", urp), Is.False);
-        Assert.That(ShouldSkip("UniversalForwardOnly", urp), Is.False);
-        Assert.That(ShouldSkip("UniversalGBuffer", urp), Is.False);
-        Assert.That(ShouldSkip("SRPDefaultUnlit", urp), Is.False);
-        Assert.That(ShouldSkip(null, urp), Is.False);
-
-        Assert.That(ShouldSkip("ShadowCaster", urp), Is.True);
-        Assert.That(ShouldSkip("DepthOnly", urp), Is.True);
-        Assert.That(ShouldSkip("DepthNormals", urp), Is.True);
-        Assert.That(ShouldSkip("Meta", urp), Is.True);
-        Assert.That(ShouldSkip("SceneSelectionPass", urp), Is.True);
-        Assert.That(ShouldSkip("MotionVectors", urp), Is.True);
-        Assert.That(ShouldSkip("CustomUnsafePass", urp), Is.True);
+        Assert.That(ShouldRemove("ShadowCaster", urp), Is.False);
+        Assert.That(ShouldRemove("DepthOnly", urp), Is.False);
+        Assert.That(ShouldRemove("DepthNormals", urp), Is.False);
+        Assert.That(ShouldRemove("Meta", urp), Is.False);
+        Assert.That(ShouldRemove("SceneSelectionPass", urp), Is.False);
+        Assert.That(ShouldRemove("MotionVectors", urp), Is.False);
+        Assert.That(ShouldRemove("CustomUnsafePass", urp), Is.False);
     }
 
     [Test]
     public void BuiltInPassFilteringPreservesLegacyBehavior() {
-        var builtIn = Enum.Parse(ModeType, "BuiltIn");
+        var builtIn = SpsRenderPipelineMode.BuiltIn;
 
-        Assert.That(ShouldSkip("ShadowCaster", builtIn), Is.True);
-        Assert.That(ShouldSkip("DepthOnly", builtIn), Is.False);
-        Assert.That(ShouldSkip(null, builtIn), Is.False);
+        Assert.That(ShouldRemove("ShadowCaster", builtIn), Is.True);
+        Assert.That(ShouldPatch("DepthOnly", builtIn), Is.True);
+        Assert.That(ShouldPatch(null, builtIn), Is.True);
     }
 
     [Test]
-    public void UrpUsePassFilteringSkipsNonDeformingUtilityPasses() {
-        var urp = Enum.Parse(ModeType, "Universal");
-        var builtIn = Enum.Parse(ModeType, "BuiltIn");
+    public void UrpUsePassFilteringPreservesNonDeformingUtilityPasses() {
+        var urp = SpsRenderPipelineMode.Universal;
+        var builtIn = SpsRenderPipelineMode.BuiltIn;
 
-        Assert.That(ShouldSkipUsePass.Invoke(null, new[] { "ShadowCaster", urp }), Is.True);
-        Assert.That(ShouldSkipUsePass.Invoke(null, new[] { "DepthOnly", urp }), Is.True);
-        Assert.That(ShouldSkipUsePass.Invoke(null, new[] { "UniversalForward", urp }), Is.False);
-        Assert.That(ShouldSkipUsePass.Invoke(null, new[] { "DepthOnly", builtIn }), Is.False);
+        Assert.That(SpsPatcher.ShouldRemoveUsePassForSps("ShadowCaster", urp), Is.False);
+        Assert.That(SpsPatcher.ShouldPatchUsePassForSps("DepthOnly", urp), Is.False);
+        Assert.That(SpsPatcher.ShouldPatchUsePassForSps("UniversalForward", urp), Is.True);
+        Assert.That(SpsPatcher.ShouldRemoveUsePassForSps("ShadowCaster", builtIn), Is.True);
+        Assert.That(SpsPatcher.ShouldPatchUsePassForSps("DepthOnly", builtIn), Is.True);
     }
 
-    private static bool ShouldSkip(string lightMode, object mode) {
+    private static bool ShouldPatch(string lightMode, SpsRenderPipelineMode mode) {
         var pass = lightMode == null ? "Pass { }" : "Pass { Tags { \"LightMode\" = \"" + lightMode + "\" } }";
-        return (bool)ShouldSkipPass.Invoke(null, new[] { pass, mode });
+        return SpsPatcher.ShouldPatchPassForSps(pass, mode);
+    }
+
+    private static bool ShouldRemove(string lightMode, SpsRenderPipelineMode mode) {
+        var pass = lightMode == null ? "Pass { }" : "Pass { Tags { \"LightMode\" = \"" + lightMode + "\" } }";
+        return SpsPatcher.ShouldRemovePassForSps(pass, mode);
     }
 }

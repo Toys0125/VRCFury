@@ -30,6 +30,13 @@ public class BasisUrpIntegrationStaticTests {
     }
 
     [Test]
+    public void UrpRendererFeatureUsesDataTextureFormat() {
+        var rendererFeature = ReadPackageFile("SPS/URP/Runtime/VrcfurySpsUrpRendererFeature.cs");
+        Assert.That(rendererFeature, Does.Contain("GraphicsFormat.R8G8B8A8_UNorm"));
+        Assert.That(rendererFeature, Does.Contain("all-zero grid is the valid"));
+    }
+
+    [Test]
     public void BasisAdapterIsReflectionOnly() {
         var adapter = ReadPackageFile("Runtime/Integration/Basis/BasisArmatureLinkAdapter.cs");
         Assert.That(adapter, Does.Not.Contain("using Basis"));
@@ -37,6 +44,9 @@ public class BasisUrpIntegrationStaticTests {
         Assert.That(adapter, Does.Not.Contain("VRC.SDK"));
         Assert.That(adapter, Does.Contain("Basis.Scripts.BasisSdk.BasisAvatar"));
         Assert.That(adapter, Does.Contain("Basis.Scripts.TransformBinders.BasisLockToBone"));
+        Assert.That(adapter, Does.Contain("BasisVrcfuryArmatureLink"));
+        Assert.That(adapter, Does.Contain("component as BasisVrcfuryArmatureLink"));
+        Assert.That(adapter, Does.Not.Contain("BasisVR BasisLockToBone"));
     }
 
     private static string ReadPackageFile(string relativePath) {

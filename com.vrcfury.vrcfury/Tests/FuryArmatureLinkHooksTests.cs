@@ -14,9 +14,12 @@ public class FuryArmatureLinkHooksTests {
         var root = new GameObject("VRCFury Hook Test Avatar");
         FuryArmatureLinkHooks.CollectArmatureLinks += ThrowingIteratorCollector;
         try {
-            LogAssert.Expect(LogType.Exception, new Regex("VRCFury armature link hook collector failed while enumerating requests"));
-            var requests = FuryArmatureLinkHooks.InvokeCollectors(root);
+            LogAssert.Expect(LogType.Exception, new Regex("VRCFury armature link hook collector failed while enumerating requests after accepting 1 request"));
+            IList<Exception> failures;
+            var requests = FuryArmatureLinkHooks.InvokeCollectors(root, out failures);
             Assert.That(requests.Count(r => r.source == "throwing iterator test"), Is.EqualTo(1));
+            Assert.That(failures, Has.Count.EqualTo(1));
+            Assert.That(failures[0].Message, Does.Contain("after accepting 1 request"));
         } finally {
             FuryArmatureLinkHooks.CollectArmatureLinks -= ThrowingIteratorCollector;
             UnityEngine.Object.DestroyImmediate(root);

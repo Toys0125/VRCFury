@@ -29,7 +29,7 @@ The texture type must match the existing `SPS_INIT_TEX` behavior in `SPS/common/
 
 `Runtime/VrcfurySpsUrpRendererFeature.cs` implements the URP bridge as a `ScriptableRendererFeature`:
 
-1. Allocate and clear `_VFGrid56` and `_VFGridFinal` temporary render textures for the current camera descriptor.
+1. Allocate and clear `_VFGrid56` and `_VFGridFinal` temporary render textures for the current camera descriptor using a non-sRGB `R8G8B8A8_UNorm` data format.
 2. Render `VRCFurySpsSocketMarker` passes into `_VFGrid56`.
 3. Publish `_VFGrid56` and `_VFGrid56_TexelSize` globally.
 4. Render `VRCFurySpsResolver` passes into `_VFGridFinal` while reading `_VFGrid56`.

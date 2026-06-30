@@ -5,8 +5,8 @@ This optional adapter registers a `FuryArmatureLinkHooks.CollectArmatureLinks` c
 Current behavior:
 
 1. Detect a Basis avatar by looking for `Basis.Scripts.BasisSdk.BasisAvatar` on the avatar root, its parents, or its children.
-2. Scan child components with type name `Basis.Scripts.TransformBinders.BasisLockToBone`.
-3. Read the component's `Role` field/property and map the Basis role name to `HumanBodyBones`.
-4. Emit a normal VRCFury external armature-link request from the `BasisLockToBone` GameObject to the mapped humanoid bone.
+2. Scan child objects for the explicit `BasisVrcfuryArmatureLink` opt-in marker.
+3. If the marker has `explicitTarget`, link to that object. Otherwise, optionally read a `Basis.Scripts.TransformBinders.BasisLockToBone` component on the same GameObject and map its `Role` to `HumanBodyBones`.
+4. Emit a normal VRCFury external armature-link request from the marked GameObject to the mapped humanoid bone or fallback bone.
 
-Unsupported/special roles such as `CenterEye` are skipped until Basis provides explicit authoring metadata for the target transform.
+Unsupported/special roles such as `CenterEye` fall back to the marker's configured fallback bone and log a warning. Unmarked `BasisLockToBone` components are intentionally ignored because they are runtime follow components, not explicit VRCFury armature-link authoring metadata.

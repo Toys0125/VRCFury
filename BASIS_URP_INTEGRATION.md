@@ -35,7 +35,8 @@ Design:
 - External packages register `FuryArmatureLinkHooks.CollectArmatureLinks`.
 - The collector receives the avatar root and returns one or more `Request` objects.
 - VRCFury converts those requests into normal internal `ArmatureLink` features before `ArmatureLinkService.Apply()` runs.
-- BasisVR can implement a small adapter that scans for Basis-authored link metadata, `BasisLockToBone`, or a future explicit Basis authoring component and maps it into VRCFury Armature Link requests.
+- The current consumer runs inside the existing VRCFury avatar build pipeline; it is not a standalone Basis-only build runner.
+- BasisVR can implement a small adapter that scans for explicit Basis-authored link metadata and maps it into VRCFury Armature Link requests.
 
 Acceptance criteria:
 
@@ -128,14 +129,15 @@ Status: implemented initial URP-aware pass filtering.
 Implementation notes:
 
 - Existing Built-in shader patching keeps the Built-in `ForwardBase` injection behavior.
-- URP mode allows visible deformation passes (`UniversalForward`, `UniversalForwardOnly`, `UniversalGBuffer`, `SRPDefaultUnlit`, `LightweightForward`) and explicitly skips shadow/depth/depth-normal/meta/selection/picking/motion-vector passes.
+- URP mode patches visible deformation passes (`UniversalForward`, `UniversalForwardOnly`, `UniversalGBuffer`, `SRPDefaultUnlit`, `LightweightForward`) and preserves shadow/depth/depth-normal/meta/selection/picking/motion-vector/unknown passes unchanged.
+- URP mode preserves non-deforming utility `UsePass` entries unchanged and only rewrites visible deformation `UsePass` entries.
 - URP mode avoids Built-in `ForwardBase` injection and avoids treating non-surface `HLSLINCLUDE`/`CGINCLUDE` blocks as Built-in surface shaders.
 
 Acceptance criteria:
 
 - Existing Built-in shader patching remains unchanged.
 - URP shaders are patched only for render passes where vertex deformation is safe.
-- Shadow/depth/meta handling is explicit in code; Unity project validation is still required for final scene coverage.
+- Shadow/depth/meta and other utility passes are preserved unchanged and covered by static tests; Unity project validation is still required for final scene coverage.
 
 ## Phase 5 — BasisVR integration package
 
@@ -144,9 +146,10 @@ Status: implemented reflection-only optional adapter.
 Added `Runtime/Integration/Basis/` optional adapter folder that:
 
 - Detects Basis avatar roots by reflection (`Basis.Scripts.BasisSdk.BasisAvatar`).
-- Detects `Basis.Scripts.TransformBinders.BasisLockToBone` by reflection as an initial armature-link authoring hint.
+- Requires the explicit `BasisVrcfuryArmatureLink` opt-in marker so unrelated Basis runtime-follow components are not mutated.
+- Optionally reads `Basis.Scripts.TransformBinders.BasisLockToBone` by reflection on the same marked object as a role data source.
 - Registers a `FuryArmatureLinkHooks.CollectArmatureLinks` collector.
-- Maps Basis bone role names to `HumanBodyBones`; `Mouth` maps to `Jaw`, unsupported roles such as `CenterEye` are skipped.
+- Maps Basis bone role names to `HumanBodyBones`; `Mouth` maps to `Jaw`, unsupported roles such as `CenterEye` fall back to the marker's configured fallback bone with a warning.
 - Does not reference BasisVR or VRCSDK types in adapter source.
 
 Verified mapping sources from the current Basis repository:
