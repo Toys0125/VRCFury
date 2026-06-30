@@ -1,6 +1,7 @@
 #ifndef SPS_INC_ID
 #define SPS_INC_ID
 
+#include "UnityCG.cginc"
 #include "sps_cell_hash.cginc"
 #include "sps_utils.cginc"
 
@@ -30,11 +31,13 @@ inline uint sps_id() {
     return sps_to_uint(_SPS_Id);
 }
 
-inline uint sps_id_hash() {
-    uint playerId = sps_player_id();
-    uint id = sps_id();
+inline uint sps_hash_id(uint id, uint playerId) {
     if (playerId == 0u) return id;
     return sps_hash_mix(id ^ sps_hash_mix(playerId));
+}
+
+inline uint sps_id_hash() {
+    return sps_hash_id(sps_id(), sps_player_id());
 }
 
 #endif

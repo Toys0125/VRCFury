@@ -234,14 +234,13 @@ namespace VF.Service {
                 foreach (var r in renderers) {
                     spsRewritesToDo.Add(new SpsRewriteToDo {
                         plugObject = plug.owner(),
-                        skin = (SkinnedMeshRenderer)r.renderer,
+                        skin = r.renderer,
                         resolverRenderer = bakeInfo.resolverRenderer,
                         bakeRoot = bakeRoot,
                         configureMaterial = r.configureMaterial,
                         spsBlendshapes = r.spsBlendshapes
                     });
                     spsPlayerIdService.Register(r.renderer);
-                    RegisterMaterialProperties(r.materialProperties);
                 }
 
                 if (bakeInfo.resolverRenderer != null) {
@@ -299,7 +298,7 @@ namespace VF.Service {
         
         public class SpsRewriteToDo {
             public VFGameObject plugObject;
-            public SkinnedMeshRenderer skin;
+            public Renderer skin;
             public MeshRenderer resolverRenderer;
             public VFGameObject bakeRoot;
             public Func<int, Material, Material> configureMaterial;

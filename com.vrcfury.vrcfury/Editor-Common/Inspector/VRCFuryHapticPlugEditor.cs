@@ -278,12 +278,14 @@ namespace VF.Inspector {
             tags.Add(SpsTagRuleList(includeTags, "Include"));
             tags.Add(SpsTagRuleList(excludeTags, "Exclude"));
             var useSharedTag = serializedObject.FindProperty("useSharedTag");
-            tags.Add(VRCFuryEditorUtils.BetterProp(useSharedTag, "Include Default",
-                tooltip: "Adds the default SPS tag so this plug can target most sockets."));
+            tags.Add(VRCFuryEditorUtils.BetterProp(useSharedTag, "Include 'Global' SPS2 Tag",
+                tooltip: "Adds the global SPS tag so this plug can target most normal sockets."));
             tags.Add(VRCFuryEditorUtils.RefreshOnChange(() => {
                 if (useSharedTag.boolValue) return new VisualElement();
-                return VRCFuryEditorUtils.Warn("This plug does not include the default SPS tag, so it will not target most sockets.");
+                return VRCFuryEditorUtils.Warn("This plug does not include the global SPS2 tag, so it will not target most sockets!");
             }, useSharedTag));
+            tags.Add(VRCFuryEditorUtils.BetterProp(serializedObject.FindProperty("useLights"), "'Global' SPS1/DPS/TPS Tag",
+                tooltip: "Allows this plug to target SPS1/DPS/TPS sockets (looking for lights)."));
             tags.Add(VRCFuryEditorUtils.BetterProp(serializedObject.FindProperty("useHipAvoidance"), "Hip Avoidance",
                 tooltip: "If this plug is on your hips, it will not target sockets on your hips."));
             container.Add(tags);
@@ -549,6 +551,7 @@ namespace VF.Inspector {
             var capsuleRotation = Quaternion.Euler(90,0,0);
 
             var localSpace = GameObjects.Create("BakedSpsPlug", transform);
+            localSpace.worldScale = Vector3.one;
             localSpace.localPosition = localPosition;
             localSpace.localRotation = localRotation;
 
@@ -618,11 +621,6 @@ namespace VF.Inspector {
                             renderer = SpsAutoRigger.AutoRig(renderer, localSpace, worldLength, worldRadius, activeFromMask);
                         }
 
-                        if (plug.enableSps) {
-                            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                            renderer.receiveShadows = false;
-                        }
-
                         var spsBaked = plug.enableSps ? SpsBaker.Bake(renderer, localSpace, activeFromMask, false, spsBlendshapes) : null;
 
                         var finishedCopies = new HashSet<Material>();
@@ -660,21 +658,7 @@ namespace VF.Inspector {
                         return new RendererResult {
                             renderer = renderer,
                             configureMaterial = ConfigureMaterial,
-                            spsBlendshapes = spsBlendshapes,
-                            materialProperties = plug.enableSps
-                                ? new List<SpsConfigurer.MaterialProperty> {
-                                    new SpsConfigurer.MaterialProperty {
-                                        renderer = renderer,
-                                        propertyName = SpsMarkersService.Configured,
-                                        value = 1
-                                    },
-                                    new SpsConfigurer.MaterialProperty {
-                                        renderer = renderer,
-                                        propertyName = SpsMarkersService.Id,
-                                        value = resolverHash
-                                    }
-                                }
-                                : null
+                            spsBlendshapes = spsBlendshapes
                         };
                     } catch (Exception e) {
                         throw new ExceptionWithCause($"Failed to configure renderer: {owner.GetPath()}", e);
@@ -738,7 +722,6 @@ namespace VF.Inspector {
             public Renderer renderer;
             public Func<int, Material, Material> configureMaterial;
             public IList<string> spsBlendshapes;
-            public List<SpsConfigurer.MaterialProperty> materialProperties;
         }
     }
 }

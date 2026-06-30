@@ -1,6 +1,7 @@
 #ifndef SPS_INC_CELL_LAYOUT
 #define SPS_INC_CELL_LAYOUT
 
+#include "sps_cell_hash.cginc"
 #include "sps_texture.cginc"
 #include "sps_encode.cginc"
 
@@ -115,6 +116,10 @@ inline uint sps_socket_slot_count() {
     int cols = sps_cell_grid_columns();
     int rows = max(1, (int)floor(_ScreenParams.y / SPS_CELL_HEIGHT));
     return (uint)max(1, min(cols * rows - 1, SPS_SOCKET_MAX_SLOTS));
+}
+
+inline uint sps_hashed_screen_slot_index_from_id(uint id, uint replica) {
+    return sps_hashed_index_from_uint(id, replica, sps_socket_slot_count());
 }
 
 inline int2 sps_cell_grid_size_for_slot_count(uint slotCount) {
@@ -286,6 +291,32 @@ inline bool sps_cell_payload_index_from_pixel_index(uint index, out uint payload
     if (index < SPS_CELL_PAYLOAD_START) return false;
     payloadIndex = index - SPS_CELL_PAYLOAD_START;
     return true;
+}
+
+bool sps_try_find_cell(
+    SpsTexture tex,
+    uint slotSeed,
+    uint id,
+    uint playerId,
+    uint product,
+    out int outCellIndex
+) {
+    outCellIndex = -1;
+    [unroll]
+    for (uint replica = 0u; replica < SPS_CELL_REPLICA_COUNT; replica++) {
+        uint cellIndex = sps_hashed_screen_slot_index_from_id(slotSeed, replica);
+        SpsCell cell = sps_get_cell(tex, cellIndex);
+        if (!sps_cell_check_magic(cell)
+            || cell.read_uint(SPS_HEADER_VENDOR_INDEX) != SPS_VENDOR_SPS
+            || cell.read_uint(SPS_HEADER_PRODUCT_INDEX) != product) {
+            continue;
+        }
+        if (sps_cell_header_unique_id(cell) != id) continue;
+        if (sps_cell_header_player_id(cell) != playerId) continue;
+        outCellIndex = (int)cellIndex;
+        return true;
+    }
+    return false;
 }
 
 #endif

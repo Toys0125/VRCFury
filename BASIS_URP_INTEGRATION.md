@@ -128,14 +128,14 @@ Status: implemented initial URP-aware pass filtering.
 
 Implementation notes:
 
-- Existing Built-in shader patching keeps the Built-in `ForwardBase` injection behavior.
+- Non-URP modes keep current upstream beta behavior: all passes are patch candidates, including shadow passes, and the patcher no longer injects or strips `LightMode` tags.
 - URP mode patches visible deformation passes (`UniversalForward`, `UniversalForwardOnly`, `UniversalGBuffer`, `SRPDefaultUnlit`, `LightweightForward`) and preserves shadow/depth/depth-normal/meta/selection/picking/motion-vector/unknown passes unchanged.
 - URP mode preserves non-deforming utility `UsePass` entries unchanged and only rewrites visible deformation `UsePass` entries.
-- URP mode avoids Built-in `ForwardBase` injection and avoids treating non-surface `HLSLINCLUDE`/`CGINCLUDE` blocks as Built-in surface shaders.
+- URP mode avoids treating non-surface `HLSLINCLUDE`/`CGINCLUDE` blocks as Built-in surface shaders.
 
 Acceptance criteria:
 
-- Existing Built-in shader patching remains unchanged.
+- Non-URP shader patching remains aligned with upstream beta behavior.
 - URP shaders are patched only for render passes where vertex deformation is safe.
 - Shadow/depth/meta and other utility passes are preserved unchanged and covered by static tests; Unity project validation is still required for final scene coverage.
 

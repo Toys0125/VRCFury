@@ -71,7 +71,7 @@ namespace VF.Inspector {
             var index = listProp.arraySize;
             listProp.InsertArrayElementAtIndex(index);
             var item = listProp.GetArrayElementAtIndex(index);
-            item.objectReferenceValue = null;
+            item.FindPropertyRelative("transform").objectReferenceValue = null;
             listProp.serializedObject.ApplyModifiedProperties();
             return item;
         }
@@ -82,7 +82,8 @@ namespace VF.Inspector {
                 for (var i = 0; i < Math.Min(listProp.arraySize, GuidedPathCount); i++) {
                     var index = i;
                     var row = new VisualElement();
-                    row.Add(new PropertyField(listProp.GetArrayElementAtIndex(index), $"Stop {index + 1}"));
+                    var item = listProp.GetArrayElementAtIndex(index);
+                    row.Add(new PropertyField(item.FindPropertyRelative("transform"), $"Stop {index + 1}"));
                     row.Add(new Button(() => {
                         listProp.DeleteArrayElementAtIndex(index);
                         listProp.serializedObject.ApplyModifiedProperties();
@@ -137,9 +138,9 @@ namespace VF.Inspector {
                     tooltip: "Offsets SPS targeting in the socket up direction by the resolver radius. Legacy lights are also moved upward slightly for TPS/DPS compatibility."
                 ));
                 section.Add(VRCFuryEditorUtils.BetterProp(
-                    serializedObject.FindProperty("guidedPath"),
+                    serializedObject.FindProperty("guidedPathStops"),
                     "Guided Path",
-                    fieldOverride: GuidedPathList(serializedObject.FindProperty("guidedPath")),
+                    fieldOverride: GuidedPathList(serializedObject.FindProperty("guidedPathStops")),
                     tooltip: "If provided, the plug will be guided through these transforms after passing through the socket. If the socket is a hole, the collapse will occur at the last transform in the path."
                 ));
                 return section;
@@ -202,12 +203,14 @@ namespace VF.Inspector {
             var tags = VRCFuryEditorUtils.Section("Tags", "Filter which plugs can target this socket");
             tags.Add(SpsTagList(serializedObject.FindProperty("tags")));
             var useSharedTag = serializedObject.FindProperty("useSharedTag");
-            tags.Add(VRCFuryEditorUtils.BetterProp(useSharedTag, "Default Tag",
-                tooltip: "Adds the default SPS tag so most plugs can target this socket."));
+            tags.Add(VRCFuryEditorUtils.BetterProp(useSharedTag, "'Global' SPS2 Tag",
+                tooltip: "Allows all SPS2 plugs (which are configured using the defaults) to target this socket."));
             tags.Add(VRCFuryEditorUtils.RefreshOnChange(() => {
                 if (useSharedTag.boolValue) return new VisualElement();
-                return VRCFuryEditorUtils.Warn("This socket does not have the default SPS tag, so most plugs will not target it.");
+                return VRCFuryEditorUtils.Warn("This socket does not have the global SPS2 tag, so most plugs will not target it.");
             }, useSharedTag));
+            tags.Add(VRCFuryEditorUtils.BetterProp(serializedObject.FindProperty("useLights"), "'Global' SPS1/DPS/TPS Tag",
+                tooltip: "Allows all SPS1/DPS/TPS plugs to target this socket. NOTE: Enabling this adds LIGHTS!"));
             tags.Add(VRCFuryEditorUtils.BetterProp(serializedObject.FindProperty("useHipAvoidance"), "Hip Avoidance",
                 tooltip: "If this socket is on your hips, it will not be targeted by plugs on your hips."));
             container.Add(tags);
@@ -385,8 +388,8 @@ namespace VF.Inspector {
             var localForward = localRotation * Vector3.forward;
             var worldStart = transform.TransformPoint(localPosition);
             var worldRotation = transform.worldRotation * localRotation;
-            var guidedPath = socket.guidedPath
-                .Where(path => path != null)
+            var guidedPathStops = socket.guidedPathStops
+                .Where(stop => stop != null && stop.transform != null)
                 .ToList();
 
             if (handTouchZoneSize != null) {
@@ -402,11 +405,11 @@ namespace VF.Inspector {
                 );
             }
 
-            if (guidedPath.Count > 0 && lightType != VRCFuryHapticSocket.AddLight.None) {
+            if (guidedPathStops.Count > 0 && lightType != VRCFuryHapticSocket.AddLight.None) {
                 DrawGizmo(worldStart, worldRotation, VRCFuryHapticSocket.AddLight.RingOneWay, GetMenuName(socket), Selection.activeGameObject == socket.owner(), socket.useRadiusOffset);
                 var previousPos = worldStart + (socket.useRadiusOffset ? worldRotation * (Vector3.up * 0.04f) : Vector3.zero);
-                foreach (var stop in guidedPath) {
-                    var stopTransform = stop.asVf();
+                foreach (var stop in guidedPathStops) {
+                    var stopTransform = stop.transform.asVf();
                     var stopPos = stopTransform.worldPosition;
                     var stopRot = stopTransform.worldRotation;
                     var offsetStopPos = stopPos + (socket.useRadiusOffset ? stopRot * (Vector3.up * 0.04f) : Vector3.zero);
@@ -430,6 +433,7 @@ namespace VF.Inspector {
             var (lightType, localPosition, localRotation) = GetInfoFromLightsOrComponent(socket);
 
             var bakeRoot = GameObjects.Create("BakedSpsSocket", transform);
+            bakeRoot.worldScale = Vector3.one;
             bakeRoot.localPosition = localPosition;
             bakeRoot.localRotation = localRotation;
 
@@ -483,10 +487,11 @@ namespace VF.Inspector {
                 });
 
                 if (BuildTargetUtils.IsDesktop()) {
-                    var useLights = socket.useSharedTag;
-                    var guidedPath = socket.guidedPath
-                        .Where(path => path != null)
-                        .Select(path => path.asVf())
+                    var guidedPathStops = socket.guidedPathStops
+                        .Where(stop => stop != null && stop.transform != null)
+                        .ToList();
+                    var guidedPath = guidedPathStops
+                        .Select(stop => stop.transform.asVf())
                         .ToList();
                     var hasGuidedPath = guidedPath.Count > 0;
                     var legacyLightType = hasGuidedPath ? VRCFuryHapticSocket.AddLight.RingOneWay : lightType;
@@ -497,7 +502,7 @@ namespace VF.Inspector {
                         screenMarkers.Add(result.obj);
                     }
 
-                    if (useLights) {
+                    if (socket.useLights) {
                         lights = GameObjects.Create("Lights", worldSpace);
                         var legacyRadiusOffset = socket.useRadiusOffset ? 0.03f / lights.worldScale.x : 0;
                         var main = GameObjects.Create("Root", lights);
