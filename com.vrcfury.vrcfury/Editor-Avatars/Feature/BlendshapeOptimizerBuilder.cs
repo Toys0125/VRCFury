@@ -21,6 +21,11 @@ namespace VF.Feature {
     [FeatureOnlyOneAllowed]
     [FeatureRootOnly]
     internal class BlendshapeOptimizerBuilder : FeatureBuilder<BlendshapeOptimizer> {
+        /// <summary>
+        /// Optional compatibility hook for non-Animator systems which drive blendshapes at runtime.
+        /// Returned names are treated exactly like animated blendshapes and will never be baked away.
+        /// </summary>
+        internal static Func<SkinnedMeshRenderer, IEnumerable<string>> GetExternalBlendshapesToKeep;
         [VFAutowired] private readonly VFGameObject avatarObject;
         [VFAutowired] private readonly VRCAvatarDescriptor avatar;
         [VFAutowired] private readonly ControllersService controllers;
@@ -59,6 +64,12 @@ namespace VF.Feature {
                 logOutput += $"\n\u252c\u2500 Optimizing {path}\n";
 
                 var animatedBlendshapes = CollectAnimatedBlendshapesForMesh(skin, blendshapeCurves);
+                var externalBlendshapes = GetExternalBlendshapesToKeep?.Invoke(skin);
+                if (externalBlendshapes != null) {
+                    foreach (var name in externalBlendshapes) {
+                        if (!string.IsNullOrWhiteSpace(name)) animatedBlendshapes.Add(name);
+                    }
+                }
 
                 bool ShouldKeepName(string name) {
                     if (animatedBlendshapes.Contains(name)) return true;

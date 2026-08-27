@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -9,9 +10,15 @@ using VRC.Dynamics;
 namespace VF.Service {
     [VFService]
     internal class FindAnimatedTransformsService {
+        /// <summary>
+        /// Optional compatibility hook for non-Animator systems which mutate avatar transforms at runtime.
+        /// The hook is intentionally generic so VRCFury's armature logic does not depend on those systems.
+        /// </summary>
+        internal static Action<VFGameObject, AnimatedTransforms> AddExternalAnimatedTransforms;
+
         [VFAutowired] private readonly ControllersService controllers;
         [VFAutowired] private readonly VFGameObject avatarObject;
-        
+
         public class AnimatedTransforms {
             public readonly HashSet<VFGameObject> scaleIsAnimated = new HashSet<VFGameObject>();
             public readonly HashSet<VFGameObject> positionIsAnimated = new HashSet<VFGameObject>();
@@ -32,7 +39,7 @@ namespace VF.Service {
 
         public AnimatedTransforms Find() {
             var output = new AnimatedTransforms();
-            
+
             // Physbones
             foreach (var physBone in avatarObject.GetComponentsInSelfAndChildren<VRCPhysBoneBase>()) {
                 var root = physBone.GetRootTransform().asVf();
@@ -78,6 +85,7 @@ namespace VF.Service {
                 }
             }
 
+            AddExternalAnimatedTransforms?.Invoke(avatarObject, output);
             return output;
         }
     }

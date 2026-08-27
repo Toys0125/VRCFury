@@ -3,12 +3,15 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Basis.Scripts.BasisSdk;
+using HVR.Vixxy;
 using UnityEditor;
 using UnityEngine;
 using VF;
 using VF.Builder;
 using VF.Component;
 using VF.Model;
+using VF.Feature;
+using VF.Service;
 using VRC.SDK3.Avatars.Components;
 
 namespace VF.Integration.Basis {
@@ -73,22 +76,150 @@ namespace VF.Integration.Basis {
 
                 UpgradeCloneVrcfury(prefab);
                 RefreshBasisAvatarMetadata(avatar, descriptor, overwriteExisting: false);
+                var faceMetadata = CaptureBasisFaceMetadata(avatar);
                 var report = BasisVrcfuryConverter.Generate(avatar, buildClone: true);
 
                 SuppressDeferredSpsAndHaptics(prefab, report);
 
                 if (descriptor != null && VRCFuryBuilder.ShouldRun(prefab.asVf())) {
-                    VRCFuryBuilder.RunMain(prefab.asVf());
+                    InstallVixxyUsageHooks(prefab);
+                    try {
+                        VRCFuryBuilder.RunMain(prefab.asVf());
+                    } finally {
+                        ClearVixxyUsageHooks();
+                    }
                 }
 
                 descriptor = prefab.GetComponent<VRCAvatarDescriptor>();
-                RefreshBasisAvatarMetadata(avatar, descriptor, overwriteExisting: true);
+                RefreshBasisAvatarMetadata(avatar, descriptor, overwriteExisting: false);
+                RestoreBasisFaceMetadata(avatar, faceMetadata);
                 TranslateHeadChopComponents(prefab, report);
                 StripVrcfuryAndVrchatRuntimeComponents(prefab);
                 LogReport(prefab, report);
             } finally {
                 runningBuildHook = false;
             }
+        }
+
+        private static void InstallVixxyUsageHooks(GameObject root) {
+            BlendshapeOptimizerBuilder.GetExternalBlendshapesToKeep = skin => GetVixxyBlendshapesForRenderer(root, skin);
+            FindAnimatedTransformsService.AddExternalAnimatedTransforms = (_, animated) => AddVixxyAnimatedTransforms(root, animated);
+        }
+
+        private static void ClearVixxyUsageHooks() {
+            BlendshapeOptimizerBuilder.GetExternalBlendshapesToKeep = null;
+            FindAnimatedTransformsService.AddExternalAnimatedTransforms = null;
+        }
+
+        private static IEnumerable<string> GetVixxyBlendshapesForRenderer(GameObject root, SkinnedMeshRenderer skin) {
+            if (root == null || skin == null) yield break;
+            var avatar = root.GetComponent<BasisAvatar>();
+            if (avatar != null && skin.sharedMesh != null) {
+                if (avatar.FaceVisemeMesh == skin && avatar.FaceVisemeMovement != null) {
+                    foreach (var index in avatar.FaceVisemeMovement) {
+                        if (index >= 0 && index < skin.sharedMesh.blendShapeCount) yield return skin.sharedMesh.GetBlendShapeName(index);
+                    }
+                    if (avatar.laughterBlendTarget >= 0 && avatar.laughterBlendTarget < skin.sharedMesh.blendShapeCount) {
+                        yield return skin.sharedMesh.GetBlendShapeName(avatar.laughterBlendTarget);
+                    }
+                }
+                if (avatar.FaceBlinkMesh == skin && avatar.BlinkViseme != null) {
+                    foreach (var index in avatar.BlinkViseme) {
+                        if (index >= 0 && index < skin.sharedMesh.blendShapeCount) yield return skin.sharedMesh.GetBlendShapeName(index);
+                    }
+                }
+            }
+            foreach (var control in root.GetComponentsInChildren<HVRVixxyControl>(true)) {
+                var subjects = BasisVrcfuryUtil.GetField(control, "subjects", Array.Empty<HVRVixxySubject>()) ?? Array.Empty<HVRVixxySubject>();
+                foreach (var subject in subjects) {
+                    if (subject?.targets == null || subject.properties == null || !subject.targets.Contains(skin.gameObject)) continue;
+                    foreach (var property in subject.properties) {
+                        if (property == null || property.variant != HVRVixxyPropertyVariant.BlendShape) continue;
+                        if (!string.IsNullOrWhiteSpace(property.propertyName)) yield return property.propertyName;
+                    }
+                }
+            }
+        }
+
+        private static void AddVixxyAnimatedTransforms(GameObject root, FindAnimatedTransformsService.AnimatedTransforms animated) {
+            if (root == null || animated == null) return;
+            foreach (var control in root.GetComponentsInChildren<HVRVixxyControl>(true)) {
+                var subjects = BasisVrcfuryUtil.GetField(control, "subjects", Array.Empty<HVRVixxySubject>()) ?? Array.Empty<HVRVixxySubject>();
+                foreach (var subject in subjects) {
+                    if (subject?.targets == null || subject.properties == null) continue;
+                    foreach (var target in subject.targets) {
+                        if (target == null) continue;
+                        var transform = target.asVf();
+                        foreach (var property in subject.properties) {
+                            if (property == null || property.fullClassName != typeof(Transform).FullName) continue;
+                            var name = property.propertyName ?? string.Empty;
+                            if (name.Contains("Position", StringComparison.OrdinalIgnoreCase)) animated.positionIsAnimated.Add(transform);
+                            if (name.Contains("Rotation", StringComparison.OrdinalIgnoreCase) || name.Contains("Euler", StringComparison.OrdinalIgnoreCase)) animated.rotationIsAnimated.Add(transform);
+                            if (name.Contains("Scale", StringComparison.OrdinalIgnoreCase)) animated.scaleIsAnimated.Add(transform);
+                            animated.AddDebugSource(transform, "Basis/Vixxy runtime control");
+                        }
+                    }
+                }
+
+                var activations = BasisVrcfuryUtil.GetField(control, "activations", Array.Empty<HVRVixxyActivation>()) ?? Array.Empty<HVRVixxyActivation>();
+                foreach (var activation in activations) {
+                    if (activation?.component is not Transform target) continue;
+                    var transform = target.gameObject.asVf();
+                    animated.activated.Add(transform);
+                    animated.AddDebugSource(transform, "Basis/Vixxy activation");
+                }
+            }
+
+            foreach (var worldLock in root.GetComponentsInChildren<HVRVixxyWorldLock>(true)) {
+                var target = worldLock != null && worldLock.target != null ? worldLock.target : worldLock?.transform;
+                if (target == null) continue;
+                var transform = target.gameObject.asVf();
+                animated.positionIsAnimated.Add(transform);
+                animated.rotationIsAnimated.Add(transform);
+                animated.AddDebugSource(transform, "Basis/Vixxy world lock");
+            }
+        }
+
+        private sealed class BasisFaceMetadataSnapshot {
+            public SkinnedMeshRenderer VisemeMesh;
+            public string[] VisemeNames;
+            public string LaughterName;
+            public SkinnedMeshRenderer BlinkMesh;
+            public string[] BlinkNames;
+        }
+
+        private static BasisFaceMetadataSnapshot CaptureBasisFaceMetadata(BasisAvatar avatar) {
+            if (avatar == null) return null;
+            string ResolveName(SkinnedMeshRenderer renderer, int index) {
+                var mesh = renderer != null ? renderer.sharedMesh : null;
+                return mesh != null && index >= 0 && index < mesh.blendShapeCount ? mesh.GetBlendShapeName(index) : null;
+            }
+            return new BasisFaceMetadataSnapshot {
+                VisemeMesh = avatar.FaceVisemeMesh,
+                VisemeNames = (avatar.FaceVisemeMovement ?? Array.Empty<int>()).Select(index => ResolveName(avatar.FaceVisemeMesh, index)).ToArray(),
+                LaughterName = ResolveName(avatar.FaceVisemeMesh, avatar.laughterBlendTarget),
+                BlinkMesh = avatar.FaceBlinkMesh,
+                BlinkNames = (avatar.BlinkViseme ?? Array.Empty<int>()).Select(index => ResolveName(avatar.FaceBlinkMesh, index)).ToArray()
+            };
+        }
+
+        private static void RestoreBasisFaceMetadata(BasisAvatar avatar, BasisFaceMetadataSnapshot snapshot) {
+            if (avatar == null || snapshot == null) return;
+            int ResolveIndex(SkinnedMeshRenderer renderer, string name) {
+                return renderer != null && renderer.sharedMesh != null && !string.IsNullOrWhiteSpace(name)
+                    ? renderer.sharedMesh.GetBlendShapeIndex(name)
+                    : -1;
+            }
+            if (snapshot.VisemeMesh != null) {
+                avatar.FaceVisemeMesh = snapshot.VisemeMesh;
+                avatar.FaceVisemeMovement = snapshot.VisemeNames.Select(name => ResolveIndex(snapshot.VisemeMesh, name)).ToArray();
+                avatar.laughterBlendTarget = ResolveIndex(snapshot.VisemeMesh, snapshot.LaughterName);
+            }
+            if (snapshot.BlinkMesh != null) {
+                avatar.FaceBlinkMesh = snapshot.BlinkMesh;
+                avatar.BlinkViseme = snapshot.BlinkNames.Select(name => ResolveIndex(snapshot.BlinkMesh, name)).ToArray();
+            }
+            EditorUtility.SetDirty(avatar);
         }
 
         private static void UpgradeCloneVrcfury(GameObject root) {
