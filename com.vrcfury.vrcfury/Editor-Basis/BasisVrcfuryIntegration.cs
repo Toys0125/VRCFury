@@ -132,7 +132,7 @@ namespace VF.Integration.Basis {
             foreach (var control in root.GetComponentsInChildren<HVRVixxyControl>(true)) {
                 var subjects = BasisVrcfuryUtil.GetField(control, "subjects", Array.Empty<HVRVixxySubject>()) ?? Array.Empty<HVRVixxySubject>();
                 foreach (var subject in subjects) {
-                    if (subject?.targets == null || subject.properties == null || !subject.targets.Contains(skin.gameObject)) continue;
+                    if (subject?.properties == null || !EnumerateVixxySubjectTargets(root, subject).Contains(skin.gameObject)) continue;
                     foreach (var property in subject.properties) {
                         if (property == null || property.variant != HVRVixxyPropertyVariant.BlendShape) continue;
                         if (!string.IsNullOrWhiteSpace(property.propertyName)) yield return property.propertyName;
@@ -146,8 +146,8 @@ namespace VF.Integration.Basis {
             foreach (var control in root.GetComponentsInChildren<HVRVixxyControl>(true)) {
                 var subjects = BasisVrcfuryUtil.GetField(control, "subjects", Array.Empty<HVRVixxySubject>()) ?? Array.Empty<HVRVixxySubject>();
                 foreach (var subject in subjects) {
-                    if (subject?.targets == null || subject.properties == null) continue;
-                    foreach (var target in subject.targets) {
+                    if (subject?.properties == null) continue;
+                    foreach (var target in EnumerateVixxySubjectTargets(root, subject)) {
                         if (target == null) continue;
                         var transform = target.asVf();
                         foreach (var property in subject.properties) {
@@ -177,6 +177,33 @@ namespace VF.Integration.Basis {
                 animated.positionIsAnimated.Add(transform);
                 animated.rotationIsAnimated.Add(transform);
                 animated.AddDebugSource(transform, "Basis/Vixxy world lock");
+            }
+        }
+
+        private static IEnumerable<GameObject> EnumerateVixxySubjectTargets(GameObject root, HVRVixxySubject subject) {
+            if (root == null || subject == null) yield break;
+            var exceptions = (subject.exceptions ?? Array.Empty<GameObject>()).Where(obj => obj != null).ToHashSet();
+            switch (subject.selection) {
+                case HVRVixxySelection.Normal:
+                    foreach (var target in subject.targets ?? Array.Empty<GameObject>()) {
+                        if (target != null) yield return target;
+                    }
+                    yield break;
+                case HVRVixxySelection.RecursiveSearch:
+                    foreach (var parent in subject.childrenOf ?? Array.Empty<GameObject>()) {
+                        if (parent == null) continue;
+                        foreach (var transform in parent.GetComponentsInChildren<Transform>(true)) {
+                            if (transform != null && !exceptions.Contains(transform.gameObject)) yield return transform.gameObject;
+                        }
+                    }
+                    yield break;
+                case HVRVixxySelection.Everything:
+                    foreach (var transform in root.GetComponentsInChildren<Transform>(true)) {
+                        if (transform != null && !exceptions.Contains(transform.gameObject)) yield return transform.gameObject;
+                    }
+                    yield break;
+                default:
+                    yield break;
             }
         }
 
