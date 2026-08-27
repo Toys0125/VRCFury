@@ -13,7 +13,7 @@ namespace VF.Model.StateAction {
         // Preserve the serialized object reference in non-VRChat projects without taking a
         // compile-time dependency on the VRC SDK. Basis adapters may inspect this Component
         // by serialized/reference identity if a compatible source component is present.
-        public Component physBone;
+        public UnityEngine.Component physBone;
 #endif
     }
 }
