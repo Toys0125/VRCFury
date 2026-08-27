@@ -23,10 +23,38 @@ namespace VF.Integration.Basis.Shim.Tests {
         }
 
         [Test]
-        public void BasisOnlyVrcfuryComponent_IsVisibleInAddComponentMenu() {
+        public void BasisOnlyVrcfuryComponent_StaysHiddenLikeUpstreamVrcfury() {
             var attribute = (AddComponentMenu)Attribute.GetCustomAttribute(typeof(VRCFury), typeof(AddComponentMenu));
             Assert.That(attribute, Is.Not.Null);
-            Assert.That(attribute.componentMenu, Is.EqualTo("VRCFury/VRCFury (BasisVR)"));
+            Assert.That(attribute.componentMenu, Is.Empty);
+        }
+
+        [Test]
+        public void BasisAuthoring_UsesUpstreamStyleFeatureMenuPaths() {
+            Assert.That(BasisVrcfuryAuthoringMenus.ArmatureLinkMenuPath, Is.EqualTo("Component/VRCFury/Armature Link (VRCFury)"));
+            Assert.That(BasisVrcfuryAuthoringMenus.BlendshapeOptimizerMenuPath, Is.EqualTo("Component/VRCFury/Blendshape Optimizer (VRCFury)"));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void BasisAuthoring_UsesCustomVrcfuryInspector(bool armatureLink) {
+            var root = new GameObject("Avatar");
+            try {
+                var fury = root.AddComponent<VRCFury>();
+                fury.content = armatureLink
+                    ? (FeatureModel)new ArmatureLink { propBone = root }
+                    : new BlendshapeOptimizer();
+
+                var editor = UnityEditor.Editor.CreateEditor(fury);
+                try {
+                    Assert.That(editor, Is.TypeOf<BasisVrcfuryAuthoringEditor>());
+                    Assert.That(editor.CreateInspectorGUI(), Is.Not.Null);
+                } finally {
+                    UnityEngine.Object.DestroyImmediate(editor);
+                }
+            } finally {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
         }
 
         [Test]
