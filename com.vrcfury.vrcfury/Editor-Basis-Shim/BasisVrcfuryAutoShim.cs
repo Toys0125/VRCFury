@@ -372,7 +372,7 @@ namespace VF.Integration.Basis.Shim {
                 var target = pair.Value;
                 if (source == null || target == null || protectedTransforms.Contains(source)) continue;
 
-                var extraComponents = source.GetComponents<Component>().Where(component => component != null && component is not Transform).ToArray();
+                var extraComponents = source.GetComponents<UnityEngine.Component>().Where(component => component != null && component is not Transform).ToArray();
                 if (extraComponents.Length > 0) {
                     source.SetParent(target, true);
                     continue;
