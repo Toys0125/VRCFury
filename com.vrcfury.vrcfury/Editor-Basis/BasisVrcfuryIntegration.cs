@@ -178,6 +178,60 @@ namespace VF.Integration.Basis {
                 animated.rotationIsAnimated.Add(transform);
                 animated.AddDebugSource(transform, "Basis/Vixxy world lock");
             }
+
+            AddBasisAuthoredMotionTransforms(root, animated);
+        }
+
+        private static void AddBasisAuthoredMotionTransforms(GameObject root, FindAnimatedTransformsService.AnimatedTransforms animated) {
+            void Mark(Transform target, BasisAuthoredMotion.Movement.Channel channel, string source) {
+                if (target == null) return;
+                var transform = target.gameObject.asVf();
+                switch (channel) {
+                    case BasisAuthoredMotion.Movement.Channel.Position:
+                        animated.positionIsAnimated.Add(transform);
+                        break;
+                    case BasisAuthoredMotion.Movement.Channel.Scale:
+                        animated.scaleIsAnimated.Add(transform);
+                        break;
+                    default:
+                        animated.rotationIsAnimated.Add(transform);
+                        break;
+                }
+                animated.AddDebugSource(transform, source);
+            }
+
+            foreach (var component in root.GetComponentsInChildren<BasisAuthoredMotion>(true)) {
+                if (component == null || component.movements == null) continue;
+                foreach (var movement in component.movements) {
+                    if (movement == null || !movement.enabled) continue;
+                    const string source = "Basis authored motion";
+                    switch (movement.kind) {
+                        case BasisAuthoredMotion.Movement.Kind.Oscillate:
+                        case BasisAuthoredMotion.Movement.Kind.Noise:
+                            foreach (var target in movement.chain ?? Array.Empty<Transform>()) Mark(target, movement.channel, source);
+                            break;
+                        case BasisAuthoredMotion.Movement.Kind.Rotate:
+                            Mark(movement.target, BasisAuthoredMotion.Movement.Channel.Rotation, source);
+                            break;
+                        case BasisAuthoredMotion.Movement.Kind.Orbit:
+                            Mark(movement.target, BasisAuthoredMotion.Movement.Channel.Position, source);
+                            break;
+                        case BasisAuthoredMotion.Movement.Kind.RandomSelect:
+                            foreach (var option in movement.options ?? Array.Empty<BasisAuthoredMotion.Option>()) {
+                                Mark(option?.target != null ? option.target : movement.selectTarget,
+                                    BasisAuthoredMotion.Movement.Channel.Rotation, source);
+                            }
+                            break;
+                        case BasisAuthoredMotion.Movement.Kind.Sequence:
+                            var sequenceRoot = movement.sequenceRoot != null ? movement.sequenceRoot : root.transform;
+                            foreach (var target in sequenceRoot.GetComponentsInChildren<Transform>(true)) {
+                                Mark(target, BasisAuthoredMotion.Movement.Channel.Rotation, source + " sequence");
+                            }
+                            if (movement.sequenceTarget != null) Mark(movement.sequenceTarget, BasisAuthoredMotion.Movement.Channel.Rotation, source);
+                            break;
+                    }
+                }
+            }
         }
 
         private static IEnumerable<GameObject> EnumerateVixxySubjectTargets(GameObject root, HVRVixxySubject subject) {
