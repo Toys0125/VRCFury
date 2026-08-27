@@ -6,9 +6,7 @@
     "VRCFury-Basis-Shim",
     "BasisSDK",
     "BasisSDKEditor",
-    "HVR.Basis.Comms",
-    "UnityEngine.TestRunner",
-    "UnityEditor.TestRunner"
+    "HVR.Basis.Comms"
   ],
   "includePlatforms": ["Editor"],
   "optionalUnityReferences": ["TestAssemblies"],
