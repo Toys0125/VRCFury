@@ -24,8 +24,15 @@
     "0Harmony.dll"
   ],
   "autoReferenced": false,
-  "defineConstraints": [],
+  "defineConstraints": [
+    "VRCF_REAL_BASE"
+  ],
   "versionDefines": [
+    {
+      "name": "com.vrchat.base",
+      "expression": "",
+      "define": "VRCF_REAL_BASE"
+    },
     {
       "name": "com.vrchat.base",
       "expression": "3.1.12",

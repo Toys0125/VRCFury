@@ -1,8 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using VF.Model.StateAction;
+#if VRCF_AVATARS
 using VRC.SDK3.Dynamics.PhysBone.Components;
+#endif
 
 namespace VF.Model.Feature {
     [Serializable]
@@ -51,6 +53,7 @@ namespace VF.Model.Feature {
         public override bool Upgrade(int fromVersion) {
 #pragma warning disable 0612
             if (fromVersion < 1) {
+#if VRCF_AVATARS
                 if (resetPhysbones != null) {
                     foreach (var obj in resetPhysbones) {
                         if (obj == null) continue;
@@ -59,6 +62,7 @@ namespace VF.Model.Feature {
                         state.actions.Add(new ResetPhysboneAction { physBone = physBone });
                     }
                 }
+#endif
             }
             if (fromVersion < 2) {
                 if (!defaultOn) {
