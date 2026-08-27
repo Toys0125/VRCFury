@@ -27,6 +27,10 @@ namespace VF.Integration.Basis.Shim {
         }
 
         private static void OnBeforeBuildPrefab(GameObject buildRoot, BasisAssetBundleObject settings) {
+            ProcessBuildClone(buildRoot, settings);
+        }
+
+        internal static void ProcessBuildClone(GameObject buildRoot, BasisAssetBundleObject settings) {
             if (running || buildRoot == null) return;
             var avatar = buildRoot.GetComponent<BasisAvatar>();
             if (avatar == null) return;
