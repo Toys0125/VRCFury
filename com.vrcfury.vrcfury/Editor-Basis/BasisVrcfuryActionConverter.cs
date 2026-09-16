@@ -209,8 +209,11 @@ namespace VF.Integration.Basis {
                     MaterialPropertyAction.Type.Color => new HVRVixxyPropertyColorHDR {
                         choices = new[] { material.GetColor(model.propertyName), model.valueColor }
                     },
-                    MaterialPropertyAction.Type.Vector or MaterialPropertyAction.Type.St => new HVRVixxyPropertyVector4 {
+                    MaterialPropertyAction.Type.Vector => new HVRVixxyPropertyVector4 {
                         choices = new[] { material.GetVector(model.propertyName), model.valueVector }
+                    },
+                    MaterialPropertyAction.Type.St => new HVRVixxyPropertyVector4 {
+                        choices = new[] { GetTextureScaleOffset(material, model.propertyName), model.valueVector }
                     },
                     _ => null
                 };
@@ -588,7 +591,10 @@ namespace VF.Integration.Basis {
         private static Material FindMaterial(Renderer renderer, string propertyName) {
             if (renderer == null) return null;
             foreach (var material in renderer.sharedMaterials ?? Array.Empty<Material>()) {
-                if (material != null && material.HasProperty(propertyName)) return material;
+                if (material == null) continue;
+                if (material.HasProperty(propertyName)) return material;
+                if (propertyName.EndsWith("_ST", StringComparison.Ordinal) &&
+                    material.HasProperty(propertyName.Substring(0, propertyName.Length - 3))) return material;
             }
             return null;
         }
@@ -597,8 +603,13 @@ namespace VF.Integration.Basis {
             if (shader == null) return MaterialPropertyAction.Type.LegacyAuto;
             var count = ShaderUtil.GetPropertyCount(shader);
             for (var i = 0; i < count; i++) {
-                if (ShaderUtil.GetPropertyName(shader, i) != propertyName) continue;
-                return ShaderUtil.GetPropertyType(shader, i).ToString() switch {
+                var shaderName = ShaderUtil.GetPropertyName(shader, i);
+                var shaderType = ShaderUtil.GetPropertyType(shader, i).ToString();
+                if (shaderType == "TexEnv" && propertyName == shaderName + "_ST") {
+                    return MaterialPropertyAction.Type.St;
+                }
+                if (shaderName != propertyName) continue;
+                return shaderType switch {
                     "Color" => MaterialPropertyAction.Type.Color,
                     "Vector" => MaterialPropertyAction.Type.Vector,
                     "Float" or "Range" or "Int" => MaterialPropertyAction.Type.Float,
@@ -606,6 +617,16 @@ namespace VF.Integration.Basis {
                 };
             }
             return MaterialPropertyAction.Type.LegacyAuto;
+        }
+
+        private static Vector4 GetTextureScaleOffset(Material material, string propertyName) {
+            if (material == null || string.IsNullOrWhiteSpace(propertyName)) return Vector4.zero;
+            var textureName = propertyName.EndsWith("_ST", StringComparison.Ordinal)
+                ? propertyName.Substring(0, propertyName.Length - 3)
+                : propertyName;
+            var scale = material.GetTextureScale(textureName);
+            var offset = material.GetTextureOffset(textureName);
+            return new Vector4(scale.x, scale.y, offset.x, offset.y);
         }
 
         internal static string NormalizeAddress(string address) {

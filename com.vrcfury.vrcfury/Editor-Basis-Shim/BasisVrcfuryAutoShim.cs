@@ -502,7 +502,9 @@ namespace VF.Integration.Basis.Shim {
 
         private static IEnumerable<Renderer> FindRenderers(GameObject root, MaterialPropertyAction property) {
             if (property.affectAllMeshes) return root.GetComponentsInChildren<Renderer>(true);
-            var renderer = property.renderer2 != null ? property.renderer2.GetComponent<Renderer>() : null;
+            var renderer = property.renderer2 != null
+                ? property.renderer2.GetComponent<Renderer>()
+                : property.renderer;
             return renderer != null ? new[] { renderer } : Array.Empty<Renderer>();
         }
 
@@ -513,8 +515,10 @@ namespace VF.Integration.Basis.Shim {
         ) {
             var shared = renderer.sharedMaterials;
             for (var i = 0; i < shared.Length; i++) {
+                var source = shared[i];
+                if (source == null || !HasMaterialProperty(source, property.propertyName)) continue;
                 var mat = GetWritableMaterial(renderer, i, materialCopies);
-                if (mat == null || !mat.HasProperty(property.propertyName)) continue;
+                if (mat == null) continue;
 
                 var type = property.propertyType;
                 if (type == MaterialPropertyAction.Type.LegacyAuto) {
@@ -529,25 +533,47 @@ namespace VF.Integration.Basis.Shim {
                         mat.SetColor(property.propertyName, property.valueColor);
                         break;
                     case MaterialPropertyAction.Type.Vector:
-                    case MaterialPropertyAction.Type.St:
                         mat.SetVector(property.propertyName, property.valueVector);
+                        break;
+                    case MaterialPropertyAction.Type.St:
+                        var textureName = property.propertyName.EndsWith("_ST", StringComparison.Ordinal)
+                            ? property.propertyName.Substring(0, property.propertyName.Length - 3)
+                            : property.propertyName;
+                        if (mat.HasProperty(textureName)) {
+                            mat.SetTextureScale(textureName, new Vector2(property.valueVector.x, property.valueVector.y));
+                            mat.SetTextureOffset(textureName, new Vector2(property.valueVector.z, property.valueVector.w));
+                        } else {
+                            mat.SetVector(property.propertyName, property.valueVector);
+                        }
                         break;
                 }
             }
+        }
+
+        private static bool HasMaterialProperty(Material material, string propertyName) {
+            if (material == null || string.IsNullOrWhiteSpace(propertyName)) return false;
+            if (material.HasProperty(propertyName)) return true;
+            if (!propertyName.EndsWith("_ST", StringComparison.Ordinal)) return false;
+            var textureName = propertyName.Substring(0, propertyName.Length - 3);
+            return material.HasProperty(textureName);
         }
 
         private static MaterialPropertyAction.Type DetectPropertyType(Shader shader, string propertyName) {
             if (shader == null) return MaterialPropertyAction.Type.Float;
             var count = shader.GetPropertyCount();
             for (var i = 0; i < count; i++) {
-                if (shader.GetPropertyName(i) != propertyName) continue;
-                switch (shader.GetPropertyType(i)) {
+                var shaderName = shader.GetPropertyName(i);
+                var shaderType = shader.GetPropertyType(i);
+                if (shaderType == UnityEngine.Rendering.ShaderPropertyType.Texture &&
+                    propertyName == shaderName + "_ST") {
+                    return MaterialPropertyAction.Type.St;
+                }
+                if (shaderName != propertyName) continue;
+                switch (shaderType) {
                     case UnityEngine.Rendering.ShaderPropertyType.Color:
                         return MaterialPropertyAction.Type.Color;
                     case UnityEngine.Rendering.ShaderPropertyType.Vector:
-                        return propertyName.EndsWith("_ST", StringComparison.Ordinal)
-                            ? MaterialPropertyAction.Type.St
-                            : MaterialPropertyAction.Type.Vector;
+                        return MaterialPropertyAction.Type.Vector;
                     default:
                         return MaterialPropertyAction.Type.Float;
                 }

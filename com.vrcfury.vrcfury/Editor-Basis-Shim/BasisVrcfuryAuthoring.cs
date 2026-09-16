@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Basis.Scripts.BasisSdk;
 using UnityEditor;
+using UnityEditor.Experimental.GraphView;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UIElements;
 using VF.Model;
 using VF.Model.Feature;
@@ -14,6 +17,10 @@ namespace VF.Integration.Basis.Shim {
     internal static class BasisVrcfuryAuthoringMenus {
         private const string ComponentRoot = "Component/VRCFury/";
         private const string ToolsRoot = "Tools/VRCFury/BasisVR/";
+        // Keep the VRCFury submenu with Unity/package components instead of pinning it
+        // to the top of Component. Unity's built-in component entries use the default
+        // priority range, while the old 0-3 priorities forced this submenu first.
+        private const int ComponentMenuPriority = 500;
         internal const string ArmatureLinkMenuPath = ComponentRoot + "Armature Link (VRCFury)";
         internal const string BlendshapeOptimizerMenuPath = ComponentRoot + "Blendshape Optimizer (VRCFury)";
         internal const string MmdCompatibilityMenuPath = ComponentRoot + "MMD Compatibility (VRCFury)";
@@ -34,7 +41,7 @@ namespace VF.Integration.Basis.Shim {
             );
         }
 
-        [MenuItem(ArmatureLinkMenuPath, false, 0)]
+        [MenuItem(ArmatureLinkMenuPath, false, ComponentMenuPriority)]
         private static void AddArmatureLink() {
             foreach (var selected in Selection.gameObjects) {
                 if (selected == null) continue;
@@ -57,7 +64,7 @@ namespace VF.Integration.Basis.Shim {
         [MenuItem(ArmatureLinkMenuPath, true)]
         private static bool ValidateAddArmatureLink() => Selection.gameObjects.Any(obj => obj != null);
 
-        [MenuItem(BlendshapeOptimizerMenuPath, false, 1)]
+        [MenuItem(BlendshapeOptimizerMenuPath, false, ComponentMenuPriority + 1)]
         private static void AddBlendshapeOptimizer() {
             foreach (var selected in Selection.gameObjects) {
                 if (selected == null) continue;
@@ -68,7 +75,7 @@ namespace VF.Integration.Basis.Shim {
         [MenuItem(BlendshapeOptimizerMenuPath, true)]
         private static bool ValidateAddBlendshapeOptimizer() => Selection.gameObjects.Any(obj => obj != null);
 
-        [MenuItem(MmdCompatibilityMenuPath, false, 2)]
+        [MenuItem(MmdCompatibilityMenuPath, false, ComponentMenuPriority + 2)]
         private static void AddMmdCompatibility() {
             foreach (var selected in Selection.gameObjects) {
                 if (selected == null) continue;
@@ -79,7 +86,7 @@ namespace VF.Integration.Basis.Shim {
         [MenuItem(MmdCompatibilityMenuPath, true)]
         private static bool ValidateAddMmdCompatibility() => Selection.gameObjects.Any(obj => obj != null);
 
-        [MenuItem(ApplyDuringUploadMenuPath, false, 3)]
+        [MenuItem(ApplyDuringUploadMenuPath, false, ComponentMenuPriority + 3)]
         private static void AddApplyDuringUpload() {
             foreach (var selected in Selection.gameObjects) {
                 if (selected == null) continue;
@@ -162,7 +169,7 @@ namespace VF.Integration.Basis.Shim {
             return false;
         }
 
-        private static string GetPath(Transform child, Transform root) {
+        internal static string GetPath(Transform child, Transform root) {
             if (child == null || root == null || child == root) return string.Empty;
             var names = new Stack<string>();
             var current = child;
@@ -172,6 +179,67 @@ namespace VF.Integration.Basis.Shim {
             }
             return current == root ? string.Join("/", names) : string.Empty;
         }
+    }
+
+    // AddComponentMenu does not expose a priority, so Unity registers the runtime
+    // VRCFury components before the authored feature entries and places the whole
+    // VRCFury folder first. Re-register those Basis-visible runtime entries through
+    // Unity's editor menu API at the normal component priority.
+    [InitializeOnLoad]
+    internal static class BasisVrcfuryComponentMenuOrdering {
+        private const int ComponentMenuPriority = 500;
+        private static readonly MethodInfo AddMenuItem = FindMenuMethod("AddMenuItem", 6);
+        private static readonly MethodInfo RemoveMenuItem = FindMenuMethod("RemoveMenuItem", 1);
+        private static bool reordering;
+
+        static BasisVrcfuryComponentMenuOrdering() {
+            EditorApplication.delayCall += ReorderRuntimeMenus;
+        }
+
+        private static MethodInfo FindMenuMethod(string name, int parameterCount) {
+            return typeof(UnityEditor.Menu)
+                .GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                .FirstOrDefault(method => method.Name == name && method.GetParameters().Length == parameterCount);
+        }
+
+        private static void ReorderRuntimeMenus() {
+            if (reordering || AddMenuItem == null || RemoveMenuItem == null) return;
+            reordering = true;
+            try {
+                RegisterComponent<VF.Component.VRCFuryGlobalCollider>("Component/VRCFury/Global Collider (VRCFury)");
+                RegisterComponent<VF.Component.VRCFuryHapticPlug>("Component/VRCFury/SPS Plug (VRCFury)");
+                RegisterComponent<VF.Component.VRCFuryHapticSocket>("Component/VRCFury/SPS Socket (VRCFury)");
+                RegisterComponent<VF.Component.VRCFuryHapticTouchReceiver>("Component/VRCFury/SPS Touch Zone (VRCFury)");
+                RegisterComponent<VF.Component.VRCFuryHapticTouchSender>("Component/VRCFury/Touch Sender (VRCFury)");
+            } catch (Exception error) {
+                Debug.LogWarning($"VRCFury Basis component menu ordering could not be applied: {error.Message}");
+            } finally {
+                reordering = false;
+            }
+        }
+
+        private static void RegisterComponent<T>(string path) where T : UnityEngine.Component {
+            RemoveMenuItem.Invoke(null, new object[] { path });
+            AddMenuItem.Invoke(null, new object[] {
+                path,
+                "",
+                false,
+                ComponentMenuPriority,
+                AddComponent<T>(),
+                new Func<bool>(HasSelection)
+            });
+        }
+
+        private static System.Action AddComponent<T>() where T : UnityEngine.Component {
+            return () => {
+                foreach (var selected in Selection.gameObjects) {
+                    if (selected != null) Undo.AddComponent<T>(selected);
+                }
+            };
+        }
+
+        private static bool HasSelection() => Selection.gameObjects.Any(obj => obj != null);
+
     }
 
     [CustomEditor(typeof(VRCFury), true)]
@@ -454,14 +522,15 @@ namespace VF.Integration.Basis.Shim {
             );
         }
 
-        private static void DrawApplyDuringUpload(SerializedProperty prop) {
-            EditorGUILayout.HelpBox(
-                "These actions are baked into the temporary Basis build/Test-in-Editor clone before Armature Link and other hierarchy-changing features run. The authored avatar is not modified.",
-                MessageType.Info
+        private void DrawApplyDuringUpload(SerializedProperty prop) {
+            EditorGUILayout.LabelField(
+                "The following actions will be applied and baked into the avatar during the upload process. This is useful if you want to enforce a specific upload state of your prop, even if the user has messed with it in the editor.",
+                EditorStyles.wordWrappedLabel
             );
-            EditorGUILayout.HelpBox(
-                "Basis supports upload-state actions that map to static avatar state. VRChat-only controller, PhysBone, SPS, and world-drop actions are preserved but skipped during Basis processing.",
-                MessageType.None
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField(
+                "Note: 'Turn On' toggles automatically turn on their objects, and thus do not need to be included here.",
+                EditorStyles.wordWrappedLabel
             );
 
             var state = prop.FindPropertyRelative("action");
@@ -471,28 +540,26 @@ namespace VF.Integration.Basis.Shim {
                 return;
             }
 
+            var avatarRoot = GetAvatarRoot();
             for (var i = 0; i < actions.arraySize; i++) {
                 var action = actions.GetArrayElementAtIndex(i);
+                var value = action.managedReferenceValue;
                 using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox)) {
                     using (new EditorGUILayout.HorizontalScope()) {
-                        var value = action.managedReferenceValue;
-                        EditorGUILayout.LabelField(
-                            value != null ? ObjectNames.NicifyVariableName(value.GetType().Name.Replace("Action", "")) : "Missing Action",
-                            EditorStyles.boldLabel
-                        );
+                        EditorGUILayout.LabelField("= " + GetActionTitle(value), EditorStyles.boldLabel);
                         if (GUILayout.Button("Remove", GUILayout.Width(64))) {
                             actions.DeleteArrayElementAtIndex(i);
                             break;
                         }
                     }
-                    EditorGUILayout.PropertyField(action, GUIContent.none, true);
+                    DrawAction(action, value, avatarRoot);
                 }
             }
 
-            if (GUILayout.Button("Add Action")) {
+            if (GUILayout.Button("Add Action +")) {
                 var menu = new GenericMenu();
                 AddActionMenuItem<ObjectToggleAction>(menu, actions, "Object Toggle");
-                AddActionMenuItem<BlendShapeAction>(menu, actions, "Blendshape");
+                AddActionMenuItem<BlendShapeAction>(menu, actions, "BlendShape");
                 AddActionMenuItem<ScaleAction>(menu, actions, "Scale");
                 AddActionMenuItem<MaterialAction>(menu, actions, "Material Swap");
                 AddActionMenuItem<MaterialPropertyAction>(menu, actions, "Material Property");
@@ -501,6 +568,384 @@ namespace VF.Integration.Basis.Shim {
                 AddActionMenuItem<PoiyomiUVTileAction>(menu, actions, "Poiyomi UV Tile");
                 AddActionMenuItem<ShaderInventoryAction>(menu, actions, "SCSS Shader Inventory");
                 menu.ShowAsContext();
+            }
+        }
+
+        private GameObject GetAvatarRoot() {
+            var fury = target as VRCFury;
+            if (fury == null) return null;
+            var avatar = fury.GetComponentInParent<BasisAvatar>();
+            return avatar != null ? avatar.gameObject : fury.transform.root.gameObject;
+        }
+
+        private static string GetActionTitle(object value) {
+            if (value == null) return "Missing Action";
+            var name = value.GetType().Name;
+            if (name.EndsWith("Action", StringComparison.Ordinal)) {
+                name = name.Substring(0, name.Length - "Action".Length);
+            }
+            return ObjectNames.NicifyVariableName(name);
+        }
+
+        private static void DrawAction(SerializedProperty prop, object value, GameObject avatarRoot) {
+            switch (value) {
+                case ObjectToggleAction:
+                    DrawObjectToggleAction(prop);
+                    break;
+                case BlendShapeAction:
+                    DrawBlendShapeAction(prop);
+                    break;
+                case ScaleAction:
+                    DrawScaleAction(prop);
+                    break;
+                case MaterialAction:
+                    DrawMaterialAction(prop);
+                    break;
+                case MaterialPropertyAction:
+                    DrawMaterialPropertyAction(prop, avatarRoot);
+                    break;
+                case AnimationClipAction:
+                    DrawAnimationClipAction(prop);
+                    break;
+                case FlipbookAction:
+                    DrawFlipbookAction(prop);
+                    break;
+                case PoiyomiUVTileAction:
+                    DrawPoiyomiUVTileAction(prop);
+                    break;
+                case ShaderInventoryAction:
+                    DrawShaderInventoryAction(prop);
+                    break;
+                default:
+                    EditorGUILayout.HelpBox(
+                        "This action is preserved for source-avatar compatibility, but Basis does not apply it during upload.",
+                        MessageType.Warning
+                    );
+                    EditorGUILayout.PropertyField(prop, GUIContent.none, true);
+                    break;
+            }
+        }
+
+        private static void DrawObjectToggleAction(SerializedProperty prop) {
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("obj"), new GUIContent("Object"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("mode"), new GUIContent("Mode"));
+        }
+
+        private static void DrawBlendShapeAction(SerializedProperty prop) {
+            var allRenderers = prop.FindPropertyRelative("allRenderers");
+            EditorGUILayout.PropertyField(allRenderers, new GUIContent("Apply to all renderers"));
+            if (!allRenderers.boolValue) {
+                EditorGUILayout.PropertyField(prop.FindPropertyRelative("renderer"), new GUIContent("Renderer"));
+            }
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("blendShape"), new GUIContent("Blendshape"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("blendShapeValue"), new GUIContent("Value"));
+        }
+
+        private static void DrawScaleAction(SerializedProperty prop) {
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("obj"), new GUIContent("Object"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("scale"), new GUIContent("Scale"));
+        }
+
+        private static void DrawMaterialAction(SerializedProperty prop) {
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("renderer"), new GUIContent("Renderer"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("materialIndex"), new GUIContent("Material Slot"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("mat"), new GUIContent("Material"), true);
+        }
+
+        private static void DrawAnimationClipAction(SerializedProperty prop) {
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("clip"), new GUIContent("Animation Clip"), true);
+        }
+
+        private static void DrawFlipbookAction(SerializedProperty prop) {
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("renderer"), new GUIContent("Renderer"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("frame"), new GUIContent("Frame"));
+        }
+
+        private static void DrawPoiyomiUVTileAction(SerializedProperty prop) {
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("renderer"), new GUIContent("Renderer"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("row"), new GUIContent("Row"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("column"), new GUIContent("Column"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("dissolve"), new GUIContent("Dissolve"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("renamedMaterial"), new GUIContent("Renamed Material"));
+        }
+
+        private static void DrawShaderInventoryAction(SerializedProperty prop) {
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("renderer"), new GUIContent("Renderer"));
+            EditorGUILayout.PropertyField(prop.FindPropertyRelative("slot"), new GUIContent("Slot"));
+        }
+
+        private static void DrawMaterialPropertyAction(SerializedProperty prop, GameObject avatarRoot) {
+            var allRenderersProp = prop.FindPropertyRelative("affectAllMeshes");
+            var rendererProp = prop.FindPropertyRelative("renderer2");
+            EditorGUILayout.PropertyField(allRenderersProp, new GUIContent("Apply to all renderers"));
+
+            if (allRenderersProp.boolValue) {
+                if (rendererProp.objectReferenceValue != null) rendererProp.objectReferenceValue = null;
+            } else {
+                DrawRendererGameObjectField(rendererProp, "Renderer");
+            }
+
+            var propertyNameProp = prop.FindPropertyRelative("propertyName");
+            var propertyTypeProp = prop.FindPropertyRelative("propertyType");
+            var selectedRenderers = FindMaterialPropertyRenderers(
+                avatarRoot,
+                allRenderersProp.boolValue,
+                rendererProp.objectReferenceValue as GameObject
+            );
+
+            var propertyChanged = false;
+            using (new EditorGUILayout.HorizontalScope()) {
+                EditorGUI.BeginChangeCheck();
+                var propertyName = EditorGUILayout.TextField(new GUIContent("Property"), propertyNameProp.stringValue);
+                propertyChanged = EditorGUI.EndChangeCheck();
+                if (propertyChanged) propertyNameProp.stringValue = propertyName;
+
+                if (GUILayout.Button("Search", GUILayout.Width(58))) {
+                    ShowMaterialPropertyMenu(
+                        propertyNameProp,
+                        propertyTypeProp,
+                        avatarRoot,
+                        allRenderersProp.boolValue,
+                        rendererProp.objectReferenceValue as GameObject
+                    );
+                }
+            }
+
+            var configuredType = (MaterialPropertyAction.Type)propertyTypeProp.enumValueIndex;
+            if (propertyChanged || configuredType == MaterialPropertyAction.Type.LegacyAuto) {
+                var detected = DetectMaterialPropertyType(selectedRenderers, propertyNameProp.stringValue);
+                if (detected.HasValue) {
+                    propertyTypeProp.enumValueIndex = (int)detected.Value;
+                    configuredType = detected.Value;
+                }
+            }
+            if (configuredType == MaterialPropertyAction.Type.LegacyAuto) {
+                configuredType = MaterialPropertyAction.Type.Float;
+            }
+
+            switch (configuredType) {
+                case MaterialPropertyAction.Type.Color:
+                    EditorGUILayout.PropertyField(prop.FindPropertyRelative("valueColor"), new GUIContent("Value"));
+                    break;
+                case MaterialPropertyAction.Type.Vector:
+                    EditorGUILayout.PropertyField(prop.FindPropertyRelative("valueVector"), new GUIContent("Value"));
+                    break;
+                case MaterialPropertyAction.Type.St:
+                    var vector = prop.FindPropertyRelative("valueVector");
+                    using (new EditorGUILayout.HorizontalScope()) {
+                        EditorGUILayout.PrefixLabel("Scale");
+                        var scaleX = vector.FindPropertyRelative("x");
+                        var scaleY = vector.FindPropertyRelative("y");
+                        scaleX.floatValue = EditorGUILayout.FloatField("X", scaleX.floatValue);
+                        scaleY.floatValue = EditorGUILayout.FloatField("Y", scaleY.floatValue);
+                    }
+                    using (new EditorGUILayout.HorizontalScope()) {
+                        EditorGUILayout.PrefixLabel("Offset");
+                        var offsetX = vector.FindPropertyRelative("z");
+                        var offsetY = vector.FindPropertyRelative("w");
+                        offsetX.floatValue = EditorGUILayout.FloatField("X", offsetX.floatValue);
+                        offsetY.floatValue = EditorGUILayout.FloatField("Y", offsetY.floatValue);
+                    }
+                    break;
+                default:
+                    EditorGUILayout.PropertyField(prop.FindPropertyRelative("value"), new GUIContent("Value"));
+                    break;
+            }
+        }
+
+        private static void DrawRendererGameObjectField(SerializedProperty prop, string label) {
+            var currentObject = prop.objectReferenceValue as GameObject;
+            var currentRenderer = currentObject != null ? currentObject.GetComponent<Renderer>() : null;
+            var nextRenderer = EditorGUILayout.ObjectField(new GUIContent(label), currentRenderer, typeof(Renderer), true) as Renderer;
+            if (nextRenderer != currentRenderer) prop.objectReferenceValue = nextRenderer != null ? nextRenderer.gameObject : null;
+        }
+
+        private static List<Renderer> FindMaterialPropertyRenderers(GameObject avatarRoot, bool allRenderers, GameObject rendererObject) {
+            var result = new List<Renderer>();
+            if (allRenderers) {
+                if (avatarRoot != null) result.AddRange(avatarRoot.GetComponentsInChildren<Renderer>(true));
+            } else {
+                var renderer = rendererObject != null ? rendererObject.GetComponent<Renderer>() : null;
+                if (renderer != null) result.Add(renderer);
+            }
+            return result;
+        }
+
+        private static MaterialPropertyAction.Type? DetectMaterialPropertyType(IList<Renderer> renderers, string propertyName) {
+            if (string.IsNullOrWhiteSpace(propertyName)) return null;
+            foreach (var renderer in renderers) {
+                if (renderer == null) continue;
+                foreach (var material in renderer.sharedMaterials) {
+                    if (material == null || material.shader == null) continue;
+                    var shader = material.shader;
+                    for (var i = 0; i < shader.GetPropertyCount(); i++) {
+                        var shaderName = shader.GetPropertyName(i);
+                        var shaderType = shader.GetPropertyType(i);
+                        if (shaderName == propertyName) return ToMaterialPropertyType(shaderType);
+                        if (shaderType == ShaderPropertyType.Texture && propertyName == shaderName + "_ST") {
+                            return MaterialPropertyAction.Type.St;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static MaterialPropertyAction.Type ToMaterialPropertyType(ShaderPropertyType type) {
+            switch (type) {
+                case ShaderPropertyType.Color:
+                    return MaterialPropertyAction.Type.Color;
+                case ShaderPropertyType.Vector:
+                    return MaterialPropertyAction.Type.Vector;
+                default:
+                    return MaterialPropertyAction.Type.Float;
+            }
+        }
+
+        private static void ShowMaterialPropertyMenu(
+            SerializedProperty propertyNameProp,
+            SerializedProperty propertyTypeProp,
+            GameObject avatarRoot,
+            bool allRenderers,
+            GameObject rendererObject
+        ) {
+            var renderers = FindMaterialPropertyRenderers(avatarRoot, allRenderers, rendererObject);
+            var provider = ScriptableObject.CreateInstance<BasisMaterialPropertySearchProvider>();
+            provider.Initialize(
+                BuildMaterialPropertySearchTree(avatarRoot, renderers),
+                selectedName => {
+                    propertyNameProp.stringValue = selectedName;
+                    var detected = DetectMaterialPropertyType(renderers, selectedName);
+                    if (detected.HasValue) propertyTypeProp.enumValueIndex = (int)detected.Value;
+                    propertyNameProp.serializedObject.ApplyModifiedProperties();
+                    GUI.changed = true;
+                }
+            );
+
+            var position = Event.current != null ? Event.current.mousePosition : Vector2.zero;
+            SearchWindow.Open(
+                new SearchWindowContext(GUIUtility.GUIToScreenPoint(position), 500, 300),
+                provider
+            );
+        }
+
+        private static List<SearchTreeEntry> BuildMaterialPropertySearchTree(GameObject avatarRoot, IList<Renderer> renderers) {
+            var entries = new List<SearchTreeEntry> {
+                new SearchTreeGroupEntry(new GUIContent("Material Properties"), 0)
+            };
+            if (renderers == null || renderers.Count == 0) return entries;
+
+            foreach (var renderer in renderers) {
+                if (renderer == null) continue;
+                var sharedMaterials = renderer.sharedMaterials;
+                if (sharedMaterials == null || sharedMaterials.Length == 0) continue;
+
+                var rendererLevel = 1;
+                if (renderers.Count > 1) {
+                    entries.Add(new SearchTreeGroupEntry(
+                        new GUIContent("Mesh: " + BasisVrcfuryAuthoringMenus.GetPath(renderer.transform, avatarRoot != null ? avatarRoot.transform : null)),
+                        rendererLevel
+                    ));
+                    rendererLevel++;
+                }
+
+                foreach (var material in sharedMaterials) {
+                    if (material == null || material.shader == null) continue;
+                    var materialLevel = rendererLevel;
+                    if (sharedMaterials.Length > 1) {
+                        entries.Add(new SearchTreeGroupEntry(new GUIContent("Material: " + material.name), materialLevel));
+                        materialLevel++;
+                    }
+
+                    var shader = material.shader;
+                    var sectionStack = new Stack<string>();
+                    for (var i = 0; i < shader.GetPropertyCount(); i++) {
+                        var propertyName = shader.GetPropertyName(i);
+                        if (propertyName == "_DummyProperty") continue;
+
+                        var description = shader.GetPropertyDescription(i) ?? string.Empty;
+                        if (description.Contains("{condition_showS:(0==1)}")) continue;
+
+                        var readableName = description;
+                        var separator = readableName.IndexOf("--", StringComparison.Ordinal);
+                        if (separator >= 0) readableName = readableName.Substring(0, separator);
+                        readableName = NormalizeSearchLabel(readableName);
+
+                        if (propertyName.StartsWith("m_start", StringComparison.Ordinal)) {
+                            sectionStack.Push(readableName);
+                        } else if (propertyName.StartsWith("m_end", StringComparison.Ordinal)) {
+                            if (sectionStack.Count > 0) sectionStack.Pop();
+                        } else if (propertyName.StartsWith("m_", StringComparison.Ordinal)) {
+                            sectionStack.Clear();
+                            if (!string.IsNullOrEmpty(readableName)) sectionStack.Push(readableName);
+                        }
+
+                        var type = shader.GetPropertyType(i);
+                        if (type != ShaderPropertyType.Float && type != ShaderPropertyType.Range &&
+                            type != ShaderPropertyType.Color && type != ShaderPropertyType.Vector &&
+                            type != ShaderPropertyType.Texture) continue;
+                        if ((shader.GetPropertyFlags(i) & ShaderPropertyFlags.HideInInspector) != 0) continue;
+
+                        var attributes = shader.GetPropertyAttributes(i);
+                        if (attributes != null && attributes.Any(attribute =>
+                                attribute.StartsWith("ThryToggle", StringComparison.Ordinal) ||
+                                attribute.StartsWith("DoNotAnimate", StringComparison.Ordinal) ||
+                                attribute.StartsWith("NoAnimate", StringComparison.Ordinal) ||
+                                attribute.StartsWith("Helpbox", StringComparison.Ordinal) ||
+                                attribute.StartsWith("ThryShaderOptimizerLockButton", StringComparison.Ordinal) ||
+                                attribute.StartsWith("ThryWideEnum", StringComparison.Ordinal))) continue;
+
+                        if (string.IsNullOrWhiteSpace(readableName)) readableName = propertyName;
+                        if (sectionStack.Count > 0) readableName = string.Join(" > ", sectionStack.Reverse()) + " > " + readableName;
+
+                        var selectionName = propertyName;
+                        var displayName = readableName;
+                        if (type == ShaderPropertyType.Texture) {
+                            selectionName += "_ST";
+                            displayName += " (Scale+Offset)";
+                        }
+                        if (displayName != selectionName) displayName += " (" + selectionName + ")";
+                        if (renderers.Count > 1) {
+                            displayName += " (Mesh: " + BasisVrcfuryAuthoringMenus.GetPath(renderer.transform, avatarRoot != null ? avatarRoot.transform : null) + ")";
+                        }
+                        if (sharedMaterials.Length > 1) displayName += " (Mat: " + material.name + ")";
+
+                        entries.Add(new SearchTreeEntry(new GUIContent(displayName)) {
+                            level = materialLevel,
+                            userData = selectionName
+                        });
+                    }
+                }
+            }
+            return entries;
+        }
+
+        private static string NormalizeSearchLabel(string value) {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+            var chars = value.Where(character => character != '<' && character != '>').ToArray();
+            return string.Join(" ", new string(chars).Split(
+                new[] { ' ', '\t', '\r', '\n' },
+                StringSplitOptions.RemoveEmptyEntries
+            ));
+        }
+
+        private sealed class BasisMaterialPropertySearchProvider : ScriptableObject, ISearchWindowProvider {
+            private List<SearchTreeEntry> entries;
+            private Action<string> onSelect;
+
+            internal void Initialize(List<SearchTreeEntry> searchEntries, Action<string> select) {
+                entries = searchEntries;
+                onSelect = select;
+            }
+
+            public List<SearchTreeEntry> CreateSearchTree(SearchWindowContext context) => entries ?? new List<SearchTreeEntry> {
+                new SearchTreeGroupEntry(new GUIContent("Material Properties"), 0)
+            };
+
+            public bool OnSelectEntry(SearchTreeEntry entry, SearchWindowContext context) {
+                if (entry == null || !(entry.userData is string selectedName)) return false;
+                onSelect?.Invoke(selectedName);
+                return true;
             }
         }
 
@@ -523,79 +968,69 @@ namespace VF.Integration.Basis.Shim {
     }
 
     internal static class BasisVrcfuryHeader {
-        internal static VisualElement Create(string title) {
-            var anchor = new VisualElement();
-            anchor.RegisterCallback<AttachToPanelEvent>(_ => AttachOverlay(anchor, title));
-            return anchor;
+        internal static VisualElement Create(string title) => CreateHeaderOverlay(title);
+
+        private static VisualElement FindEditor(VisualElement element) {
+            if (element == null) return null;
+            if (element is InspectorElement) return element.parent;
+            return FindEditor(element.parent);
         }
 
-        private static void AttachOverlay(VisualElement anchor, string title) {
-            var inspector = FindInspector(anchor);
-            if (inspector == null) {
-                anchor.Add(CreateInlineHeader(title));
+        private static bool HasMultipleHeaders(VisualElement root) {
+            if (root == null) return false;
+            if (root.ClassListContains("vrcfMultipleHeaders")) return true;
+            return HasMultipleHeaders(root.parent);
+        }
+
+        private static void AttachHeaderOverlay(VisualElement body, string title) {
+            var inspectorRoot = FindEditor(body);
+            if (HasMultipleHeaders(body) || inspectorRoot == null) {
+                body.Add(CreateInlineHeader(title));
                 return;
             }
 
-            var parent = inspector.parent;
-            if (parent == null) {
-                anchor.Add(CreateInlineHeader(title));
-                return;
-            }
-
-            var headerIndex = -1;
-            var index = 0;
-            foreach (var child in parent.Children()) {
-                if (!string.IsNullOrEmpty(child.name) && child.name.EndsWith("Header", StringComparison.Ordinal)) {
-                    headerIndex = index;
-                    break;
-                }
-                index++;
-            }
+            var headerIndex = inspectorRoot.Children()
+                .Select((element, index) => new { element, index })
+                .Where(item => !string.IsNullOrEmpty(item.element.name) && item.element.name.EndsWith("Header", StringComparison.Ordinal))
+                .Select(item => item.index)
+                .DefaultIfEmpty(-1)
+                .First();
             if (headerIndex < 0) {
-                anchor.Add(CreateInlineHeader(title));
+                body.Add(CreateInlineHeader(title));
                 return;
             }
 
-            var overlay = CreateOverlayHeader(title);
-            parent.Insert(headerIndex + 1, overlay);
-            anchor.RegisterCallback<DetachFromPanelEvent>(_ => overlay.parent?.Remove(overlay));
+            var headerArea = CreateOverlayHeader(title);
+            headerArea.AddToClassList("vrcfHeaderOverlay");
+            inspectorRoot.Insert(headerIndex + 1, headerArea);
+            body.RegisterCallback<DetachFromPanelEvent>(_ => headerArea.parent?.Remove(headerArea));
         }
 
-        private static VisualElement FindInspector(VisualElement element) {
-            for (var current = element; current != null; current = current.parent) {
-                if (current is InspectorElement) return current;
-            }
-            return null;
+        internal static VisualElement CreateHeaderOverlay(string title) {
+            var element = new VisualElement();
+            element.AddToClassList("vrcfHeader");
+            element.RegisterCallback<AttachToPanelEvent>(_ => AttachHeaderOverlay(element, title));
+            return element;
         }
 
-        private static VisualElement CreateInlineHeader(string title) {
-            var row = CreateHeaderRow(title);
-            row.style.marginTop = 4;
-            row.style.marginBottom = 6;
-            return row;
-        }
+        private static VisualElement CreateInlineHeader(string title) => CreateHeaderRow(title);
 
         internal static VisualElement CreateOverlayHeader(string title) {
-            // Match VRCFuryComponentHeader: the absolute overlay must be positioned relative to a
-            // zero-height wrapper inserted immediately after Unity's real component header.
-            // Inserting the absolute element directly makes top=-21 relative to the whole inspector,
-            // which causes it to overlap a neighboring component and breaks collapse click-through.
-            var area = new VisualElement {
-                pickingMode = PickingMode.Ignore,
+            var headerArea = new VisualElement {
                 style = {
                     height = 20,
                     width = Length.Percent(100),
                     top = -21,
                     position = Position.Absolute
-                }
+                },
+                pickingMode = PickingMode.Ignore
             };
             var row = CreateHeaderRow(title);
             row.style.marginLeft = 18;
             row.style.marginRight = 60;
-            area.Add(row);
-
+            headerArea.Add(row);
             var wrapper = new VisualElement();
-            wrapper.Add(area);
+            wrapper.Add(headerArea);
             return wrapper;
         }
 
@@ -611,24 +1046,50 @@ namespace VF.Integration.Basis.Shim {
                     backgroundColor = background
                 }
             };
+            var normalLabelColor = EditorGUIUtility.isProSkin
+                ? new Color(0.05f, 0.05f, 0.05f)
+                : new Color(0.05f, 0.05f, 0.05f);
+            row.Add(new VisualElement {
+                style = {
+                    borderRightColor = normalLabelColor,
+                    borderBottomColor = normalLabelColor,
+                    borderLeftWidth = 5,
+                    borderTopWidth = 10,
+                    borderRightWidth = 5,
+                    borderBottomWidth = 10
+                },
+                pickingMode = PickingMode.Ignore
+            });
             var badge = new Label("VRCFury") {
                 pickingMode = PickingMode.Ignore,
                 style = {
                     color = new Color(0.8f, 0.4f, 0f),
                     backgroundColor = new Color(0.05f, 0.05f, 0.05f),
-                    paddingLeft = 6,
-                    paddingRight = 6,
+                    paddingLeft = 3,
+                    paddingRight = 3,
                     unityTextAlign = TextAnchor.MiddleCenter,
-                    unityFontStyleAndWeight = FontStyle.Bold
+                    unityFontStyleAndWeight = FontStyle.Bold,
+                    flexShrink = 1
                 }
             };
             row.Add(badge);
+            row.Add(new VisualElement {
+                style = {
+                    borderLeftColor = normalLabelColor,
+                    borderTopColor = normalLabelColor,
+                    borderLeftWidth = 5,
+                    borderTopWidth = 10,
+                    borderRightWidth = 5,
+                    borderBottomWidth = 10
+                },
+                pickingMode = PickingMode.Ignore
+            });
             var name = new Label(title) {
                 pickingMode = PickingMode.Ignore,
                 style = {
                     unityTextAlign = TextAnchor.MiddleLeft,
                     unityFontStyleAndWeight = FontStyle.Bold,
-                    paddingLeft = 6,
+                    paddingLeft = 3,
                     flexGrow = 1
                 }
             };
