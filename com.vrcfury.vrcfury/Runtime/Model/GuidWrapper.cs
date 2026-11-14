@@ -110,6 +110,10 @@ namespace VF.Model {
         }
     }
 
+#if UNITY_6000_7_OR_NEWER
+    // Asset synchronization is registered by the editor on script load.
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     [Serializable]
     internal class GuidWrapper : VrcfUpgradeable {
         [Obsolete] [SerializeField] protected long fileID;

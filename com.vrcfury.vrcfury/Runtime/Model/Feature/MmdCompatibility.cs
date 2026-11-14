@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace VF.Model.Feature {
+#if UNITY_6000_7_OR_NEWER
+    // The shared MMD name lookup is initialized once and never changes between play sessions.
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     [Serializable]
     internal class MmdCompatibility : NewFeatureModel {
         public List<DisableLayer> disableLayers = new List<DisableLayer>();

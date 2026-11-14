@@ -5,6 +5,10 @@ using UnityEngine.SceneManagement;
 using VF.VrcfEditorOnly;
 
 namespace VF.Component {
+#if UNITY_6000_7_OR_NEWER
+    // The editor callback must still be available when Start runs in play mode.
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     [AddComponentMenu("")]
     internal class VRCFurySpsGreenScreenFix : VRCFuryPlayComponent, IVrcfEditorOnly {
         public static Action onCreated;

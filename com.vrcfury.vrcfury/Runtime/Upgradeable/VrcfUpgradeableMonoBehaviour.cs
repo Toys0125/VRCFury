@@ -1,6 +1,10 @@
 using UnityEngine;
 
 namespace VF.Upgradeable {
+#if UNITY_6000_7_OR_NEWER
+    // Package version metadata is set on script load and remains valid across play sessions.
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     internal abstract class VrcfUpgradeableMonoBehaviour : MonoBehaviour, IUpgradeable {
         [SerializeField] private int version = -1;
         public string unityVersion;

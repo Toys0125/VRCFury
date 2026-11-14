@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using UnityEngine;
 
 namespace VF.Component {
+#if UNITY_6000_7_OR_NEWER
+    // The scene-lighting callback is registered on script load, not on each play session.
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     [AddComponentMenu("")]
     internal class VRCFurySocketGizmo : VRCFuryPlayComponent {
         [Serializable]

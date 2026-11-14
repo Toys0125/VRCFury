@@ -7,6 +7,10 @@ using VF.Model.Feature;
 using VF.Upgradeable;
 
 namespace VF.Model {
+#if UNITY_6000_7_OR_NEWER
+    // Upgrade state and the editor dirty callback belong to the editor's script lifetime.
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+#endif
     [AddComponentMenu("")]
     [HelpURL("https://vrcfury.com")]
     internal class VRCFury : VRCFuryComponent {
