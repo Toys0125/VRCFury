@@ -6,6 +6,7 @@ env:
 
 jobs:
   test:
+    if: github.repository == 'VRCFury/VRCFury'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -90,7 +91,7 @@ jobs:
 
   deploy:
     needs: test
-    if: github.ref_name == github.event.repository.default_branch || github.ref_name == 'beta'
+    if: github.repository == 'VRCFury/VRCFury' && (github.ref_name == github.event.repository.default_branch || github.ref_name == 'beta')
     runs-on: ubuntu-latest
     environment: prod
     permissions:

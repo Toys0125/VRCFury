@@ -1,0 +1,23 @@
+name: Basis Package Validation
+on: push
+permissions:
+  contents: read
+jobs:
+  validate:
+    if: github.repository == 'Toys0125/VRCFury'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Basis package
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          package = pathlib.Path('com.vrcfury.vrcfury')
+          manifest = json.loads((package / 'package.json').read_text())
+          assert manifest['name'] == 'com.toys0125.vrcfury-basis'
+          assert re.fullmatch(r'[0-9]+[.][0-9]+[.][0-9]+', manifest['version'])
+          assert not any(name.startswith('com.vrchat.') for name in manifest.get('dependencies', {}))
+          for field in ('displayName', 'description', 'url', 'author'):
+              assert manifest.get(field), field
+          print('Basis package metadata validated. Unity compilation is not covered by this check.')
+          PY
