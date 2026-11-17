@@ -634,7 +634,7 @@ namespace VF.Integration.Basis.Shim {
 
             var protectedTransforms = CollectRuntimeDrivenTransforms(root);
             var mapping = BuildMapping(source, target, model.removeBoneSuffix);
-            RewriteSkins(root, settings, mapping, protectedTransforms);
+            RewriteSkins(root, settings, mapping, protectedTransforms, source, target);
             CollapseMappedBones(mapping, protectedTransforms);
         }
 
@@ -788,7 +788,9 @@ namespace VF.Integration.Basis.Shim {
             GameObject root,
             BasisAssetBundleObject settings,
             Dictionary<Transform, Transform> mapping,
-            HashSet<Transform> protectedTransforms
+            HashSet<Transform> protectedTransforms,
+            Transform source,
+            Transform target
         ) {
             TemporaryStorageHandler.EnsureDirectoryExists(settings.TemporaryStorage);
             foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) {
@@ -796,6 +798,13 @@ namespace VF.Integration.Basis.Shim {
                 if (oldRootBone != null && !protectedTransforms.Contains(oldRootBone)
                     && mapping.TryGetValue(oldRootBone, out var newRootBone) && newRootBone != null) {
                     skin.rootBone = newRootBone;
+                    EditorUtility.SetDirty(skin);
+                } else if (oldRootBone != null && oldRootBone == source.parent
+                           && !protectedTransforms.Contains(oldRootBone)
+                           && target.parent != null && target.parent != root.transform
+                           && skin.bones.Any(bone => bone != null && mapping.ContainsKey(bone))) {
+                    // Links commonly start at Hips, leaving the local Armature outside the bone map.
+                    skin.rootBone = target.parent;
                     EditorUtility.SetDirty(skin);
                 }
                 var oldMesh = skin.sharedMesh;
@@ -814,6 +823,15 @@ namespace VF.Integration.Basis.Shim {
                     changed = true;
                 }
                 if (!changed) continue;
+
+                // Unassigned roots need a stable avatar bone after the clothing rig is collapsed.
+                if (skin.rootBone == null) {
+                    var animator = root.GetComponent<BasisAvatar>()?.Animator;
+                    var chest = animator != null && animator.isHuman
+                        ? animator.GetBoneTransform(HumanBodyBones.Chest)
+                        : null;
+                    skin.rootBone = chest != null ? chest : newBones.FirstOrDefault(bone => bone != null);
+                }
 
                 var mesh = UnityEngine.Object.Instantiate(oldMesh);
                 mesh.name = oldMesh.name + " (VRCFury Armature Link)";

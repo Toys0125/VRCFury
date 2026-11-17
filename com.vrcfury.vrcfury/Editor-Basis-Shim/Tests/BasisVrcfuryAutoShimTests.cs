@@ -472,13 +472,15 @@ namespace VF.Integration.Basis.Shim.Tests {
             }
         }
 
-        [Test]
-        public void TestInEditor_FullBasisCallbackPipelineRewritesRecursiveSkinnedArmature() {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestInEditor_FullBasisCallbackPipelineRewritesRecursiveSkinnedArmature(bool useArmatureRoot) {
             var authored = CreateRecursiveSkinnedArmatureLinkAvatar();
             GameObject clone = null;
             try {
                 var authoredRenderer = authored.transform.Find("Wearable/Mesh").GetComponent<SkinnedMeshRenderer>();
                 var authoredHips = authored.transform.Find("Wearable/Armature/Hips");
+                if (useArmatureRoot) authoredRenderer.rootBone = authoredHips.parent;
 
                 clone = UnityEngine.Object.Instantiate(authored);
                 BasisAssetBundlePipeline.DestroyEditorOnlyInAvatar(clone);
@@ -491,6 +493,7 @@ namespace VF.Integration.Basis.Shim.Tests {
                 Assert.That(renderer.bones, Has.Length.EqualTo(2));
                 Assert.That(renderer.bones[0], Is.SameAs(targetHips));
                 Assert.That(renderer.bones[1], Is.SameAs(targetSpine));
+                Assert.That(renderer.rootBone, Is.SameAs(useArmatureRoot ? targetHips.parent : targetHips));
                 Assert.That(clone.transform.Find("Wearable/Armature/Hips"), Is.Null,
                     "Matched clothing bones should be collapsed after the skin references are rewritten.");
                 Assert.That(clone.GetComponentsInChildren<VRCFury>(true), Is.Empty);
